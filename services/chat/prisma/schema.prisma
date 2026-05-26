@@ -8,7 +8,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── Shared enums ─────────────────────────────────────────────────────────────
+// ── Enums ─────────────────────────────────────────────────────────────────────
 
 enum UserRole {
   customer
@@ -16,7 +16,6 @@ enum UserRole {
   supervisor
   admin
   bot
-
   @@map("user_role")
 }
 
@@ -24,134 +23,160 @@ enum UserStatus {
   active
   suspended
   deleted
-
   @@map("user_status")
 }
 
 enum UserLocale {
   uz
   ru
-
   @@map("user_locale")
 }
-
-// ── Room ──────────────────────────────────────────────────────────────────────
 
 enum RoomType {
   direct
   support
-  group
-
+  transfer_consult
   @@map("room_type")
 }
 
 enum RoomStatus {
-  active
-  pending
+  open
   closed
-  archived
-
+  pending
+  bot_handling
   @@map("room_status")
 }
 
-model Room {
-  id              String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type            RoomType   @default(support)
-  status          RoomStatus @default(pending)
-  title           String?    @db.VarChar(255)
-  metadata        Json       @default("{}")
-  lastMessageAt   DateTime?  @map("last_message_at") @db.Timestamptz()
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+enum MessageType {
+  text
+  image
+  video
+  audio
+  file
+  voice
+  system
+  call_log
+  bot_card
+  bot_quick_reply
+  @@map("message_type")
+}
 
-  members         RoomMember[]
-  messages        Message[]
+enum OperatorStatus {
+  offline
+  available
+  busy
+  away
+  on_call
+  in_transfer
+  @@map("operator_status")
+}
+
+// ── User ──────────────────────────────────────────────────────────────────────
+
+model User {
+  id         String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  externalId String?    @unique @map("external_id") @db.VarChar(64)
+  phone      String?    @unique @db.VarChar(32)
+  email      String?    @unique @db.VarChar(255)
+  fullName   String?    @map("full_name") @db.VarChar(255)
+  avatarUrl  String?    @map("avatar_url")
+  role       UserRole   @default(customer)
+  status     UserStatus @default(active)
+  locale     UserLocale @default(uz)
+  metadata   Json       @default("{}")
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("users")
+}
+
+// ── Room ──────────────────────────────────────────────────────────────────────
+
+model Room {
+  id                 String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type               RoomType   @default(support)
+  status             RoomStatus @default(pending)
+  title              String?    @db.VarChar(255)
+  customerId         String?    @map("customer_id") @db.Uuid
+  operatorId         String?    @map("operator_id") @db.Uuid
+  previousOperatorId String?    @map("previous_operator_id") @db.Uuid
+  lastMessageAt      DateTime?  @map("last_message_at") @db.Timestamptz()
+  botHandled         Boolean    @default(false) @map("bot_handled")
+  escalatedAt        DateTime?  @map("escalated_at") @db.Timestamptz()
+  metadata           Json       @default("{}")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  closedAt           DateTime?  @map("closed_at") @db.Timestamptz()
+
+  members  RoomMember[]
 
   @@index([status, lastMessageAt(sort: Desc)])
-  @@index([type, status])
+  @@index([customerId])
   @@map("rooms")
 }
 
 // ── RoomMember ─────────────────────────────────────────────────────────────────
 
 model RoomMember {
-  id         String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  roomId     String     @map("room_id") @db.Uuid
-  userId     String     @map("user_id") @db.Uuid
-  role       UserRole   @default(customer)
-  joinedAt   DateTime   @default(now()) @map("joined_at") @db.Timestamptz()
-  leftAt     DateTime?  @map("left_at") @db.Timestamptz()
+  roomId  String    @map("room_id") @db.Uuid
+  userId  String    @map("user_id") @db.Uuid
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz()
+  leftAt  DateTime? @map("left_at") @db.Timestamptz()
+  muted   Boolean   @default(false)
 
-  room       Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
-  @@unique([roomId, userId])
+  @@id([roomId, userId])
   @@index([userId])
   @@map("room_members")
 }
 
-// ── Message ───────────────────────────────────────────────────────────────────
-
-enum MessageType {
-  text
-  image
-  file
-  audio
-  video
-  system
-  deleted
-
-  @@map("message_type")
-}
+// ── Message — TimescaleDB hypertable (composite PK: id + created_at) ──────────
 
 model Message {
-  id              String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  roomId          String      @map("room_id") @db.Uuid
-  senderId        String      @map("sender_id") @db.Uuid
-  type            MessageType @default(text)
-  content         String
-  clientMessageId String?     @unique @map("client_message_id") @db.VarChar(64)
-  replyToId       String?     @map("reply_to_id") @db.Uuid
-  editedAt        DateTime?   @map("edited_at") @db.Timestamptz()
-  deletedAt       DateTime?   @map("deleted_at") @db.Timestamptz()
-  metadata        Json        @default("{}")
-  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  id        String      @db.Uuid
+  roomId    String      @map("room_id") @db.Uuid
+  senderId  String      @map("sender_id") @db.Uuid
+  type      MessageType @default(text)
+  content   String?
+  replyToId String?     @map("reply_to_id") @db.Uuid
+  editedAt  DateTime?   @map("edited_at") @db.Timestamptz()
+  deletedAt DateTime?   @map("deleted_at") @db.Timestamptz()
+  metadata  Json        @default("{}")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz()
 
-  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  receipts        MessageReceipt[]
-  attachments     Attachment[]
-
+  @@id([id, createdAt])
   @@index([roomId, createdAt(sort: Desc)])
-  @@index([senderId])
-  @@index([clientMessageId])
+  @@index([senderId, createdAt(sort: Desc)])
   @@map("messages")
 }
 
 // ── MessageReceipt ────────────────────────────────────────────────────────────
 
 model MessageReceipt {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  messageId String   @map("message_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  readAt    DateTime @default(now()) @map("read_at") @db.Timestamptz()
+  messageId   String    @map("message_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz()
+  readAt      DateTime? @map("read_at") @db.Timestamptz()
 
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
+  @@id([messageId, userId])
   @@map("message_receipts")
 }
 
 // ── Attachment ────────────────────────────────────────────────────────────────
 
 model Attachment {
-  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  messageId  String  @map("message_id") @db.Uuid
-  url        String
-  mimeType   String  @map("mime_type") @db.VarChar(128)
-  size       Int
-  filename   String  @db.VarChar(255)
-  metadata   Json    @default("{}")
-
-  message    Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  uploaderId   String   @map("uploader_id") @db.Uuid
+  storageKey   String   @map("storage_key") @db.VarChar(512)
+  mimeType     String   @map("mime_type") @db.VarChar(128)
+  fileName     String   @map("file_name") @db.VarChar(512)
+  sizeBytes    BigInt   @map("size_bytes")
+  width        Int?
+  height       Int?
+  durationMs   Int?     @map("duration_ms")
+  thumbnailKey String?  @map("thumbnail_key") @db.VarChar(512)
+  checksum     String?  @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   @@map("attachments")
 }
@@ -159,49 +184,28 @@ model Attachment {
 // ── SystemMessageTemplate ─────────────────────────────────────────────────────
 
 model SystemMessageTemplate {
-  id        String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  key       String  @unique @db.VarChar(64)
-  content   Json
+  key        String   @id @db.VarChar(64)
+  templateUz String   @map("template_uz")
+  templateRu String   @map("template_ru")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   @@map("system_message_templates")
 }
 
-// ── User (read-only — auth-service manages writes) ────────────────────────────
-
-model User {
-  id         String     @id @db.Uuid
-  externalId String?    @unique @map("external_id") @db.VarChar(64)
-  phone      String?    @unique @db.VarChar(32)
-  fullName   String?    @map("full_name") @db.VarChar(255)
-  role       UserRole   @default(customer)
-  status     UserStatus @default(active)
-  locale     UserLocale @default(uz)
-  metadata   Json       @default("{}")
-
-  @@map("users")
-}
-
-// ── OperatorState (for ACD) ───────────────────────────────────────────────────
-
-enum OperatorStatus {
-  online
-  busy
-  offline
-  break
-
-  @@map("operator_status")
-}
+// ── OperatorState ─────────────────────────────────────────────────────────────
 
 model OperatorState {
-  id             String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  operatorId     String         @unique @map("operator_id") @db.Uuid
-  status         OperatorStatus @default(offline)
-  activeRooms    Int            @default(0) @map("active_rooms")
-  maxRooms       Int            @default(5) @map("max_rooms")
-  languages      String[]       @default(["uz"])
-  skills         String[]       @default([])
-  lastActivityAt DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz()
-  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  userId             String         @id @map("user_id") @db.Uuid
+  status             OperatorStatus @default(offline)
+  activeChats        Int            @default(0) @map("active_chats")
+  maxConcurrentChats Int            @default(5) @map("max_concurrent_chats")
+  onCall             Boolean        @default(false) @map("on_call")
+  currentCallId      String?        @map("current_call_id") @db.Uuid
+  lastStatusAt       DateTime       @default(now()) @map("last_status_at") @db.Timestamptz()
+  skills             String[]       @default([])
+  languages          UserLocale[]   @default([uz])
+  isSupervisor       Boolean        @default(false) @map("is_supervisor")
 
+  @@index([status])
   @@map("operator_states")
 }

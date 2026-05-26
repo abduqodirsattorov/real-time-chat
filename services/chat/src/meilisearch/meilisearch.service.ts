@@ -28,6 +28,10 @@ export class MeilisearchService implements OnModuleInit {
 
   private async ensureIndex() {
     try {
+      // Primary key explicitly — prevent ambiguity with roomId/senderId
+      try {
+        await this.client.createIndex(INDEX, { primaryKey: 'id' });
+      } catch {}
       const idx = this.client.index(INDEX);
       await idx.updateSettings({
         searchableAttributes: ['content'],

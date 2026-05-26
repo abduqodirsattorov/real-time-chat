@@ -1,6 +1,6 @@
 import {
   Injectable, NotFoundException, ForbiddenException,
-  ConflictException, BadRequestException, Logger,
+  BadRequestException, Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -12,9 +12,11 @@ import { JwtUser } from '../common/decorators/current-user.decorator';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ListMessagesDto } from './dto/list-messages.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
+import { v4 as uuidv4 } from 'uuid';
 
-const EDIT_WINDOW_MS = 5 * 60 * 1000; // 5 min
-const IDEM_TTL = 86400; // 24h
+const EDIT_WINDOW_MS = 5 * 60 * 1000;
+const IDEM_TTL = 86400;
+const SYSTEM_SENDER = '00000000-0000-0000-0000-000000000001';
 
 @Injectable()
 export class MessagesService {
@@ -35,12 +37,11 @@ export class MessagesService {
     await this.rooms.assertMember(user.sub, roomId);
 
     const limit = dto.limit ?? 50;
-    let where: any = { roomId, deletedAt: null };
+    const where: any = { roomId, deletedAt: null };
 
     if (dto.cursor) {
       try {
-        const ts = new Date(Buffer.from(dto.cursor, 'base64').toString('utf8'));
-        where.createdAt = { lt: ts };
+        where.createdAt = { lt: new Date(Buffer.from(dto.cursor, 'base64').toString('utf8')) };
       } catch {}
     }
     if (dto.before) where.createdAt = { lt: new Date(dto.before) };
@@ -50,10 +51,6 @@ export class MessagesService {
       where,
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
-      include: {
-        attachments: true,
-        receipts: { select: { userId: true, readAt: true } },
-      },
     });
 
     const hasMore = msgs.length > limit;
@@ -73,64 +70,49 @@ export class MessagesService {
     // Idempotency check
     if (dto.clientMessageId) {
       const idemKey = `msg:idem:${dto.clientMessageId}`;
-      const existing = await this.redis.get(idemKey);
-      if (existing) {
-        const msg = await this.prisma.message.findUnique({
-          where: { id: existing },
-          include: { attachments: true },
-        });
-        if (msg) return msg;
+      const existingId = await this.redis.get(idemKey);
+      if (existingId) {
+        const cached = await this.prisma.message.findFirst({ where: { id: existingId } });
+        if (cached) return cached;
       }
     }
 
+    const newId = uuidv4();
     const msg = await this.prisma.message.create({
       data: {
+        id: newId,
         roomId,
         senderId: user.sub,
         type: dto.type as any,
         content: dto.content,
-        clientMessageId: dto.clientMessageId ?? null,
         replyToId: dto.replyToId ?? null,
+        metadata: {},
       },
-      include: { attachments: true },
     });
 
-    // Update room.lastMessageAt
     await this.prisma.room.update({
       where: { id: roomId },
       data: { lastMessageAt: msg.createdAt },
     });
 
-    // Cache idempotency key
     if (dto.clientMessageId) {
       await this.redis.set(`msg:idem:${dto.clientMessageId}`, msg.id, IDEM_TTL);
     }
 
-    // Centrifugo publish
     await this.centrifugo.publishToRoom(roomId, 'message.created', {
       message: msg, senderId: user.sub,
     });
 
-    // RabbitMQ event
     await this.rabbitmq.publish('message.created', {
-      room_id: roomId,
-      message_id: msg.id,
-      sender_id: user.sub,
-      type: dto.type,
-      content_preview: dto.content.slice(0, 100),
-      locale: user.locale,
-      timestamp: Date.now(),
+      room_id: roomId, message_id: msg.id, sender_id: user.sub,
+      type: dto.type, content_preview: (dto.content ?? '').slice(0, 100),
+      locale: user.locale, timestamp: Date.now(),
     });
 
-    // Meilisearch index
     await this.meili.indexMessage({
-      id: msg.id,
-      roomId,
-      senderId: user.sub,
-      type: dto.type,
-      content: dto.content,
-      locale: user.locale,
-      createdAt: msg.createdAt.getTime(),
+      id: msg.id, roomId, senderId: user.sub,
+      type: dto.type, content: dto.content ?? '',
+      locale: user.locale, createdAt: msg.createdAt.getTime(),
     });
 
     this.logger.log({ event: 'message_created', msgId: msg.id, roomId, userId: user.sub });
@@ -140,7 +122,7 @@ export class MessagesService {
   // ── Update message ────────────────────────────────────────────────────────────
 
   async update(user: JwtUser, messageId: string, dto: UpdateMessageDto) {
-    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    const msg = await this.prisma.message.findFirst({ where: { id: messageId } });
     if (!msg || msg.deletedAt) throw new NotFoundException('Xabar topilmadi');
     if (msg.senderId !== user.sub) throw new ForbiddenException('Faqat o\'z xabarini o\'zgartirish mumkin');
     if (Date.now() - msg.createdAt.getTime() > EDIT_WINDOW_MS) {
@@ -151,7 +133,7 @@ export class MessagesService {
     const history = (msg.metadata as any)?.history ?? [];
     history.push({ content: msg.content, editedAt: new Date().toISOString() });
 
-    const updated = await this.prisma.message.update({
+    const updated = await this.prisma.message.updateMany({
       where: { id: messageId },
       data: {
         content: dto.content,
@@ -160,22 +142,23 @@ export class MessagesService {
       },
     });
 
-    await this.centrifugo.publishToRoom(msg.roomId, 'message.updated', { message: updated });
-    return updated;
+    const result = await this.prisma.message.findFirst({ where: { id: messageId } });
+    await this.centrifugo.publishToRoom(msg.roomId, 'message.updated', { message: result });
+    return result;
   }
 
   // ── Delete message (soft) ─────────────────────────────────────────────────────
 
   async delete(user: JwtUser, messageId: string) {
-    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    const msg = await this.prisma.message.findFirst({ where: { id: messageId } });
     if (!msg || msg.deletedAt) throw new NotFoundException('Xabar topilmadi');
 
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
     if (msg.senderId !== user.sub && !isOperator) throw new ForbiddenException();
 
-    const deleted = await this.prisma.message.update({
+    await this.prisma.message.updateMany({
       where: { id: messageId },
-      data: { deletedAt: new Date(), type: 'deleted', content: '' },
+      data: { deletedAt: new Date(), type: 'text', content: '' },
     });
 
     await this.centrifugo.publishToRoom(msg.roomId, 'message.deleted', { messageId });
@@ -187,13 +170,13 @@ export class MessagesService {
   // ── Mark as read ──────────────────────────────────────────────────────────────
 
   async markRead(user: JwtUser, messageId: string) {
-    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    const msg = await this.prisma.message.findFirst({ where: { id: messageId } });
     if (!msg || msg.deletedAt) throw new NotFoundException();
     await this.rooms.assertMember(user.sub, msg.roomId);
 
     await this.prisma.messageReceipt.upsert({
       where: { messageId_userId: { messageId, userId: user.sub } },
-      create: { messageId, userId: user.sub },
+      create: { messageId, userId: user.sub, readAt: new Date() },
       update: { readAt: new Date() },
     });
 
@@ -225,22 +208,29 @@ export class MessagesService {
       return null;
     }
 
-    const raw = tmpl.content as { uz: string; ru: string };
     const interpolate = (text: string) =>
       text.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 
     const content = JSON.stringify({
-      uz: interpolate(raw.uz),
-      ru: interpolate(raw.ru),
+      uz: interpolate(tmpl.templateUz),
+      ru: interpolate(tmpl.templateRu),
     });
 
+    const newId = uuidv4();
     const msg = await this.prisma.message.create({
       data: {
+        id: newId,
         roomId,
-        senderId: '00000000-0000-0000-0000-000000000001',
+        senderId: SYSTEM_SENDER,
         type: 'system',
         content,
+        metadata: {},
       },
+    });
+
+    await this.prisma.room.update({
+      where: { id: roomId },
+      data: { lastMessageAt: msg.createdAt },
     });
 
     await this.centrifugo.publishToRoom(roomId, 'message.created', { message: msg });

@@ -9,7 +9,6 @@ import { JwtUser } from '../common/decorators/current-user.decorator';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { ListRoomsDto } from './dto/list-rooms.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
-import { RoomStatus } from '@prisma/client';
 
 @Injectable()
 export class RoomsService {
@@ -36,9 +35,11 @@ export class RoomsService {
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
 
     const where: any = {
-      ...(dto.status ? { status: dto.status as RoomStatus } : {}),
+      ...(dto.status ? { status: dto.status as any } : {}),
       ...(dto.type ? { type: dto.type as any } : {}),
-      ...(!isOperator ? { members: { some: { userId: user.sub, leftAt: null } } } : {}),
+      ...(!isOperator ? {
+        members: { some: { userId: user.sub, leftAt: null } },
+      } : {}),
       ...(cursorDate ? { lastMessageAt: { lt: cursorDate } } : {}),
     };
 
@@ -47,8 +48,7 @@ export class RoomsService {
       orderBy: { lastMessageAt: 'desc' },
       take: limit + 1,
       include: {
-        members: { select: { userId: true, role: true, joinedAt: true } },
-        _count: { select: { messages: { where: { deletedAt: null } } } },
+        members: { select: { userId: true, joinedAt: true } },
       },
     });
 
@@ -64,19 +64,20 @@ export class RoomsService {
   // ── Create room ──────────────────────────────────────────────────────────────
 
   async create(user: JwtUser, dto: CreateRoomDto) {
-    const memberIds = dto.memberIds ?? [];
+    const memberIds: string[] = dto.memberIds ?? [];
     if (!memberIds.includes(user.sub)) memberIds.push(user.sub);
+
+    const isSupport = dto.type === 'support';
+    const customerId = user.role === 'customer' ? user.sub : undefined;
 
     const room = await this.prisma.room.create({
       data: {
         type: dto.type as any,
         title: dto.title,
-        status: dto.type === 'support' ? 'pending' : 'active',
+        status: isSupport ? 'pending' : 'open',
+        customerId,
         members: {
-          create: memberIds.map(uid => ({
-            userId: uid,
-            role: uid === user.sub ? (user.role as any) : 'customer',
-          })),
+          create: memberIds.map(uid => ({ userId: uid })),
         },
       },
       include: { members: true },
@@ -92,8 +93,7 @@ export class RoomsService {
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
       include: {
-        members: { select: { userId: true, role: true, joinedAt: true, leftAt: true } },
-        _count: { select: { messages: { where: { deletedAt: null } } } },
+        members: { select: { userId: true, joinedAt: true, leftAt: true } },
       },
     });
     if (!room) throw new NotFoundException('Xona topilmadi');
@@ -118,7 +118,7 @@ export class RoomsService {
       where: { id: roomId },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
-        ...(dto.status ? { status: dto.status as RoomStatus } : {}),
+        ...(dto.status ? { status: dto.status as any } : {}),
       },
     });
 
@@ -138,7 +138,7 @@ export class RoomsService {
 
     const closed = await this.prisma.room.update({
       where: { id: roomId },
-      data: { status: 'closed' },
+      data: { status: 'closed', closedAt: new Date() },
     });
 
     await this.centrifugo.publishToRoom(roomId, 'room.closed', {
@@ -146,7 +146,7 @@ export class RoomsService {
     });
 
     await this.rabbitmq.publish('room.closed', {
-      roomId, closedBy: user.sub, timestamp: Date.now(),
+      room_id: roomId, closed_by: user.sub, timestamp: Date.now(),
     });
 
     this.logger.log({ event: 'room_closed', roomId, by: user.sub });
@@ -155,22 +155,22 @@ export class RoomsService {
 
   // ── Verify membership ─────────────────────────────────────────────────────────
 
-  async assertMember(userId: string, roomId: string, roles?: string[]) {
+  async assertMember(userId: string, roomId: string) {
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException('Xona topilmadi');
 
-    const isGlobalOperator = await this.prisma.user.findUnique({
+    const userRec = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
-    }).then(u => u && ['operator', 'supervisor', 'admin'].includes(u.role));
+    });
 
+    const isGlobalOperator = userRec && ['operator', 'supervisor', 'admin'].includes(userRec.role);
     if (isGlobalOperator) return room;
 
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
     });
     if (!member || member.leftAt) throw new ForbiddenException('Ushbu xonaga ruxsat yo\'q');
-    if (roles && !roles.includes(member.role)) throw new ForbiddenException('Ruxsat yo\'q');
 
     return room;
   }

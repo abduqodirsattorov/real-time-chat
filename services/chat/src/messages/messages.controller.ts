@@ -10,6 +10,7 @@ import { ListMessagesDto } from './dto/list-messages.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { TypingDto } from './dto/typing.dto';
 
+@Controller('')
 @UseGuards(JwtAuthGuard)
 export class MessagesController {
   constructor(private readonly messages: MessagesService) {}
