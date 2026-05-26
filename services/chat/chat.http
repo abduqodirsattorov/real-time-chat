@@ -1,0 +1,184 @@
+### chat-service REST Client examples
+### Base URL: http://localhost:3002
+### Requires: REST Client extension for VS Code
+
+@base = http://localhost:3002
+@token = {{$dotenv JWT_TOKEN}}
+@roomId = room-uuid-here
+@msgId = msg-uuid-here
+
+### ─── Health ────────────────────────────────────────────────────────────────
+
+GET {{base}}/healthz
+
+###
+
+GET {{base}}/readyz
+
+### ─── Rooms ──────────────────────────────────────────────────────────────────
+
+### 1. Xonalar ro'yxati (operator)
+GET {{base}}/rooms
+Authorization: Bearer {{token}}
+
+###
+
+### 2. Xonalar ro'yxati — filter va pagination
+GET {{base}}/rooms?status=active&type=support&limit=20
+Authorization: Bearer {{token}}
+
+###
+
+### 3. Yangi support xona yaratish (customer)
+POST {{base}}/rooms
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "support"
+}
+
+###
+
+### 4. Yangi direct xona yaratish
+POST {{base}}/rooms
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "direct",
+  "memberIds": ["other-user-uuid"],
+  "title": "Direct suhbat"
+}
+
+###
+
+### 5. Bitta xona
+GET {{base}}/rooms/{{roomId}}
+Authorization: Bearer {{token}}
+
+###
+
+### 6. Xonani yangilash (operator only)
+PATCH {{base}}/rooms/{{roomId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "VIP mijoz xonasi",
+  "status": "active"
+}
+
+###
+
+### 7. Xonani yopish (operator only)
+POST {{base}}/rooms/{{roomId}}/close
+Authorization: Bearer {{token}}
+
+### ─── Messages ───────────────────────────────────────────────────────────────
+
+### 8. Xabarlar ro'yxati (cursor pagination)
+GET {{base}}/rooms/{{roomId}}/messages
+Authorization: Bearer {{token}}
+
+###
+
+### 9. Xabarlar — cursor bilan
+GET {{base}}/rooms/{{roomId}}/messages?limit=20&cursor=MjAyNS0wMS0wMVQwMDowMDowMC4wMDBa
+Authorization: Bearer {{token}}
+
+###
+
+### 10. Yangi xabar yuborish
+POST {{base}}/rooms/{{roomId}}/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "text",
+  "content": "Salom! Yordam kerak.",
+  "clientMessageId": "client-uuid-001"
+}
+
+###
+
+### 11. Idempotency — bir xil clientMessageId qayta xabar yaratmaydi
+POST {{base}}/rooms/{{roomId}}/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "text",
+  "content": "Salom! Yordam kerak.",
+  "clientMessageId": "client-uuid-001"
+}
+
+###
+
+### 12. Reply xabar
+POST {{base}}/rooms/{{roomId}}/messages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "text",
+  "content": "Albatta, yordam beraman!",
+  "replyToId": "{{msgId}}"
+}
+
+###
+
+### 13. Xabarni tahrirlash (5 daqiqa ichida, faqat sender)
+PATCH {{base}}/messages/{{msgId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "content": "Yangilangan matn"
+}
+
+###
+
+### 14. Xabarni o'chirish (soft delete)
+DELETE {{base}}/messages/{{msgId}}
+Authorization: Bearer {{token}}
+
+###
+
+### 15. O'qildi belgisi
+POST {{base}}/messages/{{msgId}}/read
+Authorization: Bearer {{token}}
+
+###
+
+### 16. "Yozyapti..." indikatori
+POST {{base}}/rooms/{{roomId}}/typing
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "typing": true
+}
+
+### ─── Support / ACD ──────────────────────────────────────────────────────────
+
+### 17. Mijoz support boshlaydi (ACD trigger)
+POST {{base}}/support/request
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "locale": "uz"
+}
+
+### ─── Search ─────────────────────────────────────────────────────────────────
+
+### 18. Meilisearch orqali qidirish
+GET {{base}}/search?q=salom&roomId={{roomId}}
+Authorization: Bearer {{token}}
+
+###
+
+### 19. Sana oralig'i bilan qidirish
+GET {{base}}/search?q=yordam&dateFrom=2025-01-01&dateTo=2025-12-31&limit=20
+Authorization: Bearer {{token}}

@@ -1,0 +1,207 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Shared enums ─────────────────────────────────────────────────────────────
+
+enum UserRole {
+  customer
+  operator
+  supervisor
+  admin
+  bot
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+
+  @@map("user_status")
+}
+
+enum UserLocale {
+  uz
+  ru
+
+  @@map("user_locale")
+}
+
+// ── Room ──────────────────────────────────────────────────────────────────────
+
+enum RoomType {
+  direct
+  support
+  group
+
+  @@map("room_type")
+}
+
+enum RoomStatus {
+  active
+  pending
+  closed
+  archived
+
+  @@map("room_status")
+}
+
+model Room {
+  id              String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type            RoomType   @default(support)
+  status          RoomStatus @default(pending)
+  title           String?    @db.VarChar(255)
+  metadata        Json       @default("{}")
+  lastMessageAt   DateTime?  @map("last_message_at") @db.Timestamptz()
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  members         RoomMember[]
+  messages        Message[]
+
+  @@index([status, lastMessageAt(sort: Desc)])
+  @@index([type, status])
+  @@map("rooms")
+}
+
+// ── RoomMember ─────────────────────────────────────────────────────────────────
+
+model RoomMember {
+  id         String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  roomId     String     @map("room_id") @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  role       UserRole   @default(customer)
+  joinedAt   DateTime   @default(now()) @map("joined_at") @db.Timestamptz()
+  leftAt     DateTime?  @map("left_at") @db.Timestamptz()
+
+  room       Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@map("room_members")
+}
+
+// ── Message ───────────────────────────────────────────────────────────────────
+
+enum MessageType {
+  text
+  image
+  file
+  audio
+  video
+  system
+  deleted
+
+  @@map("message_type")
+}
+
+model Message {
+  id              String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  roomId          String      @map("room_id") @db.Uuid
+  senderId        String      @map("sender_id") @db.Uuid
+  type            MessageType @default(text)
+  content         String
+  clientMessageId String?     @unique @map("client_message_id") @db.VarChar(64)
+  replyToId       String?     @map("reply_to_id") @db.Uuid
+  editedAt        DateTime?   @map("edited_at") @db.Timestamptz()
+  deletedAt       DateTime?   @map("deleted_at") @db.Timestamptz()
+  metadata        Json        @default("{}")
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  receipts        MessageReceipt[]
+  attachments     Attachment[]
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@index([senderId])
+  @@index([clientMessageId])
+  @@map("messages")
+}
+
+// ── MessageReceipt ────────────────────────────────────────────────────────────
+
+model MessageReceipt {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  readAt    DateTime @default(now()) @map("read_at") @db.Timestamptz()
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_receipts")
+}
+
+// ── Attachment ────────────────────────────────────────────────────────────────
+
+model Attachment {
+  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  messageId  String  @map("message_id") @db.Uuid
+  url        String
+  mimeType   String  @map("mime_type") @db.VarChar(128)
+  size       Int
+  filename   String  @db.VarChar(255)
+  metadata   Json    @default("{}")
+
+  message    Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
+
+// ── SystemMessageTemplate ─────────────────────────────────────────────────────
+
+model SystemMessageTemplate {
+  id        String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  key       String  @unique @db.VarChar(64)
+  content   Json
+
+  @@map("system_message_templates")
+}
+
+// ── User (read-only — auth-service manages writes) ────────────────────────────
+
+model User {
+  id         String     @id @db.Uuid
+  externalId String?    @unique @map("external_id") @db.VarChar(64)
+  phone      String?    @unique @db.VarChar(32)
+  fullName   String?    @map("full_name") @db.VarChar(255)
+  role       UserRole   @default(customer)
+  status     UserStatus @default(active)
+  locale     UserLocale @default(uz)
+  metadata   Json       @default("{}")
+
+  @@map("users")
+}
+
+// ── OperatorState (for ACD) ───────────────────────────────────────────────────
+
+enum OperatorStatus {
+  online
+  busy
+  offline
+  break
+
+  @@map("operator_status")
+}
+
+model OperatorState {
+  id             String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  operatorId     String         @unique @map("operator_id") @db.Uuid
+  status         OperatorStatus @default(offline)
+  activeRooms    Int            @default(0) @map("active_rooms")
+  maxRooms       Int            @default(5) @map("max_rooms")
+  languages      String[]       @default(["uz"])
+  skills         String[]       @default([])
+  lastActivityAt DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz()
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("operator_states")
+}

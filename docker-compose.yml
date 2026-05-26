@@ -207,27 +207,38 @@ services:
     restart: unless-stopped
 
   chat-service:
-    # PHASE 1 STUB — Phase 3 da real NestJS kodi bilan almashtiriladi
-    image: node:20-alpine
-    command: >
-      sh -c "node -e \"
-        const h=require('http');
-        h.createServer((q,s)=>{
-          s.writeHead(200,{'Content-Type':'application/json'});
-          s.end(JSON.stringify({status:'ok',service:'chat-service',phase:'stub'}));
-        }).listen(3002);
-        console.log('[chat-service] Phase 1 stub — port 3002');
-      \""
+    build:
+      context: ./services/chat
+      dockerfile: Dockerfile
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
+      CENTRIFUGO_API_URL: http://centrifugo:8000/api
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      MEILI_URL: http://meilisearch:7700
+      MEILI_KEY: ${MEILI_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3002
     ports:
       - "3002:3002"
     networks:
       - nova-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/healthz"]
       interval: 10s
       timeout: 5s
+      start_period: 30s
       retries: 5
     restart: unless-stopped
 
