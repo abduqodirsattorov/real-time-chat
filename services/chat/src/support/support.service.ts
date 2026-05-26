@@ -86,7 +86,6 @@ export class SupportService {
         languages: { has: locale },
         ...(requiredSkills.length > 0 ? { skills: { hasSome: requiredSkills } } : {}),
       },
-      where2: undefined,
       orderBy: { activeRooms: 'asc' },
       take: 10,
     } as any);

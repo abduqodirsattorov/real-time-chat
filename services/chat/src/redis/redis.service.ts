@@ -7,11 +7,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
 
   onModuleInit() {
-    this.client = new Redis({
-      host: process.env.REDIS_HOST ?? 'redis',
-      port: parseInt(process.env.REDIS_PORT ?? '6379'),
-      maxRetriesPerRequest: 3,
-    });
+    const redisUrl = process.env.REDIS_URL;
+    this.client = redisUrl
+      ? new Redis(redisUrl, { maxRetriesPerRequest: 3 })
+      : new Redis({
+          host: process.env.REDIS_HOST ?? 'redis',
+          port: parseInt(process.env.REDIS_PORT ?? '6379'),
+          maxRetriesPerRequest: 3,
+        });
     this.client.on('error', (e) => this.logger.error('Redis error', e));
     this.client.on('connect', () => this.logger.log('Redis connected'));
   }

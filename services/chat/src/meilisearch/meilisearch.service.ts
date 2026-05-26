@@ -20,8 +20,8 @@ export class MeilisearchService implements OnModuleInit {
 
   async onModuleInit() {
     this.client = new MeiliSearch({
-      host: process.env.MEILI_HOST ?? 'http://meilisearch:7700',
-      apiKey: process.env.MEILI_MASTER_KEY ?? 'nova_dev_master_key',
+      host: process.env.MEILI_URL ?? 'http://meilisearch:7700',
+      apiKey: process.env.MEILI_KEY ?? process.env.MEILI_MASTER_KEY ?? 'nova_dev_master_key',
     });
     await this.ensureIndex();
   }
