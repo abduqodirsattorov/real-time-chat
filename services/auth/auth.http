@@ -1,0 +1,140 @@
+### Auth Service — REST Client test (VS Code REST Client extension)
+### Base URL
+@baseUrl = http://localhost:3001
+
+### ─── Healthcheck ──────────────────────────────────────────────────────────
+
+GET {{baseUrl}}/healthz
+
+###
+
+GET {{baseUrl}}/readyz
+
+### ─── Register ─────────────────────────────────────────────────────────────
+
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "phone": "+998901234567",
+  "fullName": "Test Foydalanuvchi",
+  "locale": "uz"
+}
+
+### ─── OTP Send ──────────────────────────────────────────────────────────────
+### OTP console.log'dan oling: docker compose logs auth-service
+
+POST {{baseUrl}}/auth/otp/send
+Content-Type: application/json
+
+{
+  "phone": "+998901234567"
+}
+
+### ─── OTP Verify (OTP'ni console.log'dan ko'ring) ──────────────────────────
+
+# @name verify
+POST {{baseUrl}}/auth/otp/verify
+Content-Type: application/json
+
+{
+  "phone": "+998901234567",
+  "otp": "123456"
+}
+
+### ─── Tokenlarni saqlang ────────────────────────────────────────────────────
+
+@accessToken = {{verify.response.body.accessToken}}
+@refreshToken = {{verify.response.body.refreshToken}}
+
+### ─── Get Me ─────────────────────────────────────────────────────────────────
+
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+### ─── Update Locale ──────────────────────────────────────────────────────────
+
+PATCH {{baseUrl}}/auth/me/locale
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "locale": "ru"
+}
+
+### ─── Centrifugo Connection Token ────────────────────────────────────────────
+
+POST {{baseUrl}}/auth/centrifugo/token
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{}
+
+### ─── Centrifugo Subscribe Token ─────────────────────────────────────────────
+
+POST {{baseUrl}}/auth/centrifugo/subscribe
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "channel": "chat:room-uuid-1234"
+}
+
+### ─── Refresh Token ──────────────────────────────────────────────────────────
+
+# @name refreshed
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### ─── Login (mavjud user uchun OTP yuboradi) ───────────────────────────────
+
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "phone": "+998901234567"
+}
+
+### ─── Nova SSO ───────────────────────────────────────────────────────────────
+### Signature = HMAC-SHA256("novaUserId:timestamp", NOVA_SSO_SECRET)
+### Timestamp ishlab chiqarish:
+###   docker compose exec auth-service node -e "
+###     const {createHmac}=require('crypto');
+###     const t=Math.floor(Date.now()/1000);
+###     const s=createHmac('sha256','nova_sso_shared_secret_change_me_32chars').update('42:'+t).digest('hex');
+###     console.log(JSON.stringify({timestamp:t,signature:s}));
+###   "
+
+POST {{baseUrl}}/auth/nova/sso
+Content-Type: application/json
+
+{
+  "novaUserId": "42",
+  "novaRole": "operator",
+  "fullName": "Nova Operator",
+  "locale": "uz",
+  "timestamp": 1779777217,
+  "signature": "9e6f9161a733685710ec62a1a55045d831f7b7c530ea86bd4aaf10eed75294b7"
+}
+
+### ─── Logout ──────────────────────────────────────────────────────────────────
+
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
+
+### ─── Validation xatoliklari (400) ──────────────────────────────────────────
+
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "phone": "notaphone"
+}
+
+### ─── Autentifikatsiyasiz so'rov (401) ───────────────────────────────────────
+
+GET {{baseUrl}}/auth/me

@@ -1,11 +1,11 @@
 FROM node:20-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache wget
+RUN apk add --no-cache wget openssl
 
 FROM base AS deps
-COPY package*.json ./
-RUN npm ci --only=production && cp -r node_modules /tmp/prod_modules
-RUN npm ci
+COPY package.json ./
+RUN npm install --omit=dev && cp -r node_modules /tmp/prod_modules
+RUN npm install
 
 FROM deps AS build
 COPY . .

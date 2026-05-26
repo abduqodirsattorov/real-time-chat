@@ -32,11 +32,8 @@ logging:
   json: true
 
 turn:
-  enabled: true
-  domain: localhost
-  tls_port: 5349
-  udp_port: 3478
-  external_tls: false
+  # Lokal dev uchun o'chirilgan — Phase 6'da STUN/TURN yoqiladi
+  enabled: false
 
 webhook:
   api_key: devkey

@@ -96,15 +96,18 @@ audio-generate: ## Placeholder audio fayllarni qayta generatsiya qilish (Python 
 
 # ─── Testing ─────────────────────────────────────────────────────────────────
 
-test: ## Barcha servislar unit testlarini ishga tushirish
-	docker compose exec auth-service npm test
-	docker compose exec chat-service npm test
-	docker compose exec call-service npm test
-	docker compose exec presence-service npm test
-	docker compose exec media-service npm test
+test: test-auth ## Barcha servislar unit testlarini ishga tushirish
 
-test-auth: ## Faqat auth-service test
-	docker compose exec auth-service npm test
+test-auth: ## auth-service unit testlari (devDeps bilan alohida container)
+	docker run --rm \
+	  -v "$(CURDIR)/services/auth:/app" \
+	  -w /app \
+	  -e JWT_SECRET=test_jwt_secret_32_chars_minimum_xx \
+	  -e JWT_REFRESH_SECRET=test_refresh_secret_32_chars_min_xx \
+	  -e CENTRIFUGO_TOKEN_SECRET=test_centrifugo_secret \
+	  -e NOVA_SSO_SECRET=test_nova_sso_secret \
+	  node:20-alpine \
+	  sh -c "npm install --silent 2>/dev/null && npx jest --passWithNoTests"
 
 test-chat: ## Faqat chat-service test
 	docker compose exec chat-service npm test

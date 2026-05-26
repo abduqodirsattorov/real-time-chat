@@ -1,0 +1,80 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  customer
+  operator
+  supervisor
+  admin
+  bot
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+
+  @@map("user_status")
+}
+
+enum UserLocale {
+  uz
+  ru
+
+  @@map("user_locale")
+}
+
+enum DevicePlatform {
+  ios
+  android
+  web
+
+  @@map("device_platform")
+}
+
+model User {
+  id           String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  externalId   String?    @unique @map("external_id") @db.VarChar(64)
+  phone        String?    @unique @db.VarChar(32)
+  email        String?    @unique @db.VarChar(255)
+  passwordHash String?    @map("password_hash") @db.VarChar(255)
+  fullName     String?    @map("full_name") @db.VarChar(255)
+  avatarUrl    String?    @map("avatar_url")
+  role         UserRole   @default(customer)
+  status       UserStatus @default(active)
+  locale       UserLocale @default(uz)
+  metadata     Json       @default("{}")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  devices      Device[]
+
+  @@map("users")
+}
+
+model Device {
+  id         String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  platform   DevicePlatform
+  pushToken  String         @map("push_token")
+  voipToken  String?        @map("voip_token")
+  deviceName String?        @map("device_name") @db.VarChar(255)
+  appVersion String?        @map("app_version") @db.VarChar(32)
+  locale     UserLocale?
+  lastSeen   DateTime       @default(now()) @map("last_seen") @db.Timestamptz()
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pushToken])
+  @@map("devices")
+}

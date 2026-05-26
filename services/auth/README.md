@@ -1,70 +1,102 @@
-# auth-service — Port 3001
+# auth-service — Phase 2
 
-JWT autentifikatsiya servisi. Mijoz OTP, operator login, Nova SSO va Centrifugo token endpointlarini ta'minlaydi.
+NestJS + TypeScript + Prisma asosidagi autentifikatsiya mikroservisi.
 
-## Endpointlar
+## Endpoints (11 ta)
 
-| Method | Path | Tavsif |
-|--------|------|--------|
-| POST | `/auth/register` | Mijoz ro'yxatdan o'tish (phone + OTP) |
-| POST | `/auth/otp/send` | OTP yuborish (1/daq per phone) |
-| POST | `/auth/otp/verify` | OTP tekshirish, JWT qaytarish |
-| POST | `/auth/login` | Operator login (email + password) |
-| POST | `/auth/refresh` | Access token yangilash |
-| POST | `/auth/logout` | Token blacklist |
-| GET | `/auth/me` | Joriy user ma'lumotlari |
-| PATCH | `/auth/me/locale` | Tilni o'zgartirish (uz/ru) |
-| POST | `/auth/centrifugo/token` | Centrifugo connection JWT |
-| POST | `/auth/centrifugo/subscribe` | Centrifugo channel JWT |
-| POST | `/auth/nova/sso` | Nova SSO (HMAC signature bilan) |
-| GET | `/healthz` | Health check |
-| GET | `/readyz` | Readiness check |
-| GET | `/metrics` | Prometheus metrics |
+| Method | Path | Auth | Tavsif |
+|--------|------|------|--------|
+| POST | `/auth/register` | — | Yangi foydalanuvchi ro'yxatdan o'tkazish |
+| POST | `/auth/otp/send` | — | OTP yuborish (console.log fallback) |
+| POST | `/auth/otp/verify` | — | OTP tekshirish → JWT tokens |
+| POST | `/auth/login` | — | Mavjud user uchun OTP yuborish |
+| POST | `/auth/refresh` | — | Refresh token rotation |
+| POST | `/auth/logout` | Bearer | Sessiyani yakunlash |
+| GET | `/auth/me` | Bearer | Joriy foydalanuvchi ma'lumoti |
+| PATCH | `/auth/me/locale` | Bearer | Tilni o'zgartirish |
+| POST | `/auth/centrifugo/token` | Bearer | Centrifugo connection JWT |
+| POST | `/auth/centrifugo/subscribe` | Bearer | Kanal subscribe JWT |
+| POST | `/auth/nova/sso` | — | Nova (Laravel) SSO |
+| GET | `/healthz` | — | Liveness probe |
+| GET | `/readyz` | — | Readiness probe (DB + Redis) |
 
-## Muhit o'zgaruvchilar
-
-```
-DATABASE_URL=postgres://nova:nova_dev_pass@postgres:5432/nova_chat
-REDIS_URL=redis://redis:6379
-JWT_SECRET=32+ belgi
-JWT_REFRESH_SECRET=32+ belgi
-CENTRIFUGO_HMAC_SECRET=32+ belgi
-NOVA_SHARED_SECRET=32+ belgi
-PORT=3001
-NODE_ENV=development
-```
-
-## Lokal ishga tushirish
-
-```bash
-npm install
-npx prisma generate
-npx prisma migrate deploy
-npm run start:dev
-```
-
-## Test
-
-```bash
-npm test
-npm run test:e2e
-```
-
-## JWT payload
+## JWT Payload
 
 ```json
 {
-  "sub": "user_uuid",
-  "role": "customer|operator|supervisor|admin",
-  "locale": "uz",
+  "sub": "user-uuid",
+  "role": "customer|operator|supervisor|admin|bot",
+  "locale": "uz|ru",
+  "jti": "unique-token-id",
   "iat": 1700000000,
   "exp": 1700003600
 }
 ```
 
-Access TTL: 1 soat | Refresh TTL: 30 kun (Redis rotation)
+## OTP
+
+- 6 xonali tasodifiy raqam
+- TTL: 5 daqiqa (Redis'da)
+- Rate limit: 1 ta/daqiqa, 5 ta/kun (telefon boshiga)
+- SMS provider yo'q — `console.log("[OTP] +998901234567: 123456")`
+
+## Refresh Token Rotation + Theft Detection
+
+- Refresh token: 30 kunlik JWT (alohida secret bilan)
+- Redis'da saqlash: `auth:refresh:{jti}` → userId
+- Foydalanilgan token qayta ishlatilsa → BARCHA sessiyalar o'chiriladi
 
 ## Nova SSO
 
-Nova HMAC signature bilan `X-Nova-Signature` headerini yuboradi.
-Servis signature tekshiradi, user'ni topadi/yaratadi, JWT qaytaradi.
+```
+HMAC-SHA256("{novaUserId}:{timestamp}", NOVA_SSO_SECRET)
+```
+- Timestamp toleransi: ±5 daqiqa (replay attack himoya)
+- `external_id = "nova_{novaUserId}"`
+- Mavjud bo'lmasa — yangi user yaratadi
+- Mavjud bo'lsa — role/locale yangilaydi
+
+## ENV vars
+
+| O'zgaruvchi | Tavsif | Misol |
+|-------------|--------|-------|
+| DATABASE_URL | PostgreSQL URL | `postgresql://nova:pass@postgres:5432/nova_chat` |
+| REDIS_HOST | Redis host | `redis` |
+| REDIS_PORT | Redis port | `6379` |
+| JWT_SECRET | Access token secret (min 32 belgi) | — |
+| JWT_REFRESH_SECRET | Refresh token secret (min 32 belgi) | — |
+| CENTRIFUGO_TOKEN_SECRET | Centrifugo JWT secret | — |
+| NOVA_SSO_SECRET | Nova HMAC secret | — |
+| PORT | Tinglash porti | `3001` |
+| LOG_LEVEL | Pino log darajasi | `info` |
+| LOG_PRETTY | Pino pretty print | `true` (faqat lokal) |
+
+## Ishga tushirish
+
+```bash
+# Docker Compose orqali
+docker compose up -d auth-service
+
+# Lokal dev (Node.js kerak)
+cd services/auth
+cp ../../.env.example .env
+npm install
+npx prisma generate
+npm run start:dev
+```
+
+## Testlar
+
+```bash
+make test-auth
+# yoki lokal: cd services/auth && npm test
+```
+
+## Xavfsizlik
+
+- JWT secret hech qachon kodga hardcode qilinmaydi
+- Timing-safe HMAC taqqoslash (Nova SSO)
+- Rate limiting Redis Counter orqali
+- Refresh token theft detection
+- Input validation: class-validator
+- Correlation-ID: barcha request/response'larda
