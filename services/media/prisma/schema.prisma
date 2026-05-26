@@ -1,0 +1,26 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Attachment {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  uploaderId   String   @map("uploader_id") @db.Uuid
+  storageKey   String   @map("storage_key") @db.VarChar(512)
+  mimeType     String   @map("mime_type") @db.VarChar(128)
+  fileName     String   @map("file_name") @db.VarChar(512)
+  sizeBytes    BigInt   @map("size_bytes")
+  width        Int?
+  height       Int?
+  durationMs   Int?     @map("duration_ms")
+  thumbnailKey String?  @map("thumbnail_key") @db.VarChar(512)
+  checksum     String?  @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("attachments")
+}

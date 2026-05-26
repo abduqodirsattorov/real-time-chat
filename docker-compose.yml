@@ -58,6 +58,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_SERVER_URL: http://localhost:9000
     volumes:
       - minio_data:/data
     ports:
@@ -268,27 +269,40 @@ services:
     restart: unless-stopped
 
   media-service:
-    # PHASE 1 STUB — Phase 4 da real NestJS kodi bilan almashtiriladi
-    image: node:20-alpine
-    command: >
-      sh -c "node -e \"
-        const h=require('http');
-        h.createServer((q,s)=>{
-          s.writeHead(200,{'Content-Type':'application/json'});
-          s.end(JSON.stringify({status:'ok',service:'media-service',phase:'stub'}));
-        }).listen(3004);
-        console.log('[media-service] Phase 1 stub — port 3004');
-      \""
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_PUBLIC_ENDPOINT: http://localhost:9000
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3004
     ports:
       - "3004:3004"
     networks:
       - nova-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3004/healthz"]
       interval: 10s
       timeout: 5s
+      start_period: 60s
       retries: 5
     restart: unless-stopped
 
