@@ -340,27 +340,38 @@ services:
     restart: unless-stopped
 
   notification-service:
-    # PHASE 1 STUB — Phase 5 da real NestJS kodi bilan almashtiriladi
-    image: node:20-alpine
-    command: >
-      sh -c "node -e \"
-        const h=require('http');
-        h.createServer((q,s)=>{
-          s.writeHead(200,{'Content-Type':'application/json'});
-          s.end(JSON.stringify({status:'ok',service:'notification-service',phase:'stub'}));
-        }).listen(3006);
-        console.log('[notification-service] Phase 1 stub — port 3006');
-      \""
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET}
+      FCM_SERVICE_ACCOUNT_PATH: /secrets/fcm-service-account.json
+      APNS_KEY_PATH: /secrets/apns.p8
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_TOPIC: ${APNS_TOPIC:-com.nova.app}
+      APNS_VOIP_TOPIC: ${APNS_VOIP_TOPIC:-com.nova.app.voip}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3006
     ports:
       - "3006:3006"
     networks:
       - nova-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3006/healthz"]
       interval: 10s
       timeout: 5s
+      start_period: 60s
       retries: 5
     restart: unless-stopped
 

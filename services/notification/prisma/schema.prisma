@@ -1,0 +1,49 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserLocale {
+  uz
+  ru
+  @@map("user_locale")
+}
+
+enum DevicePlatform {
+  ios
+  android
+  web
+  @@map("device_platform")
+}
+
+model User {
+  id      String     @id @db.Uuid
+  locale  UserLocale @default(uz)
+  devices Device[]
+
+  @@map("users")
+}
+
+model Device {
+  id         String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  platform   DevicePlatform
+  pushToken  String         @map("push_token")
+  voipToken  String?        @map("voip_token")
+  deviceName String?        @map("device_name") @db.VarChar(255)
+  appVersion String?        @map("app_version") @db.VarChar(32)
+  locale     UserLocale?
+  lastSeen   DateTime       @default(now()) @map("last_seen") @db.Timestamptz()
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pushToken])
+  @@index([userId])
+  @@map("devices")
+}
