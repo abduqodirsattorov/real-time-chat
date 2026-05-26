@@ -1,0 +1,51 @@
+{
+  "token_hmac_secret_key": "centrifugo_hmac_secret_change_me_32chars",
+  "api_key": "centrifugo_api_key_change_me",
+  "admin": true,
+  "admin_password": "admin",
+  "admin_secret": "admin_secret_change_me_32chars_xx",
+  "allowed_origins": ["*"],
+  "namespaces": [
+    {
+      "name": "chat",
+      "presence": true,
+      "join_leave": true,
+      "history_size": 100,
+      "history_ttl": "168h",
+      "force_recovery": true,
+      "allow_subscribe_for_client": true,
+      "allow_publish_for_client": false
+    },
+    {
+      "name": "presence",
+      "presence": true,
+      "allow_subscribe_for_client": true,
+      "allow_publish_for_client": false
+    },
+    {
+      "name": "call",
+      "history_size": 10,
+      "history_ttl": "1h",
+      "allow_subscribe_for_client": true,
+      "allow_publish_for_client": false
+    }
+  ],
+  "engine": "redis",
+  "redis_address": "redis:6379",
+  "websocket": true,
+  "websocket_compression": true,
+  "websocket_compression_min_size": 512,
+  "log_level": "info",
+  "log_format": "json",
+  "prometheus": true,
+  "health": true,
+  "grpc_api": false,
+  "client_anonymous": false,
+  "client_concurrency": 8,
+  "client_channel_limit": 128,
+  "client_connection_rate_limit": 100,
+  "presence_ttl": "60s",
+  "proxy_connect_endpoint": "",
+  "proxy_subscribe_endpoint": "",
+  "proxy_publish_endpoint": ""
+}

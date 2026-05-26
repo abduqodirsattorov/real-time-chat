@@ -1,0 +1,17 @@
+# Linux/Mac'da LF, Windows'da CRLF — automatik
+* text=auto
+
+# Shell scriptlar har doim LF (Docker va Linux'da ishlaydi)
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.sql text eol=lf
+Makefile text eol=lf
+
+# Binary fayllar
+*.mp3 binary
+*.png binary
+*.jpg binary
+*.pdf binary

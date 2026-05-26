@@ -1,0 +1,17 @@
+{
+  "errors": {
+    "invalid_credentials": "Неверный логин или пароль",
+    "user_not_found": "Пользователь не найден",
+    "user_suspended": "Пользователь заблокирован",
+    "otp_invalid": "Неверный код OTP",
+    "otp_expired": "Срок действия OTP истёк",
+    "otp_too_many": "Слишком много попыток. Попробуйте позже",
+    "token_invalid": "Токен недействителен",
+    "token_expired": "Срок действия токена истёк",
+    "signature_invalid": "Недействительная подпись"
+  },
+  "messages": {
+    "otp_sent": "Код OTP отправлен",
+    "logout_success": "Выход выполнен"
+  }
+}

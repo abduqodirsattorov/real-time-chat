@@ -1,0 +1,45 @@
+# LiveKit Server — Local Development Config
+# network_mode: host — WebRTC UDP portlari uchun
+# Windows'da: Phase 6'da port-mapping + TURN alternative qo'shamiz
+
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: false
+  # Windows'da muammo bo'lsa false qiling:
+  use_ice_lite: false
+
+keys:
+  devkey: devsecret_change_me_32_chars_minimum_xx
+
+room:
+  auto_create: false
+  max_participants: 10
+  empty_timeout: 60
+  departure_timeout: 20
+  enable_remote_unmute: true
+
+redis:
+  address: localhost:6379
+
+logging:
+  level: info
+  json: true
+
+turn:
+  enabled: true
+  domain: localhost
+  tls_port: 5349
+  udp_port: 3478
+  external_tls: false
+
+webhook:
+  api_key: devkey
+  urls:
+    - http://localhost:3005/livekit/webhook
+    - http://localhost:3007/webhooks/livekit/egress

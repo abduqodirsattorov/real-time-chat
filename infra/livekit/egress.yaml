@@ -1,0 +1,23 @@
+# LiveKit Egress — Recording Service Config
+# Qaydlar MinIO'ga (S3-compatible) saqlanadi
+
+api_key: devkey
+api_secret: devsecret_change_me_32_chars_minimum_xx
+ws_url: ws://localhost:7880
+
+redis:
+  address: localhost:6379
+
+s3:
+  access_key: minioadmin
+  secret: minioadmin123
+  region: us-east-1
+  endpoint: http://localhost:9000
+  force_path_style: true
+  bucket: nova-recordings
+
+health_port: 9090
+template_port: 7980
+log_level: info
+
+insecure: true

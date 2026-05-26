@@ -1,0 +1,17 @@
+{
+  "errors": {
+    "invalid_credentials": "Login yoki parol noto'g'ri",
+    "user_not_found": "Foydalanuvchi topilmadi",
+    "user_suspended": "Foydalanuvchi bloklanganlar",
+    "otp_invalid": "OTP kodi noto'g'ri",
+    "otp_expired": "OTP kodi muddati o'tgan",
+    "otp_too_many": "Juda ko'p urinish. Keyinroq qayta urinib ko'ring",
+    "token_invalid": "Token yaroqsiz",
+    "token_expired": "Token muddati tugagan",
+    "signature_invalid": "Imzo yaroqsiz"
+  },
+  "messages": {
+    "otp_sent": "OTP kodi yuborildi",
+    "logout_success": "Chiqish amalga oshirildi"
+  }
+}

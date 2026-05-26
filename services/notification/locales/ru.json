@@ -1,0 +1,20 @@
+{
+  "notification": {
+    "new_message": {
+      "title": "Новое сообщение",
+      "body": "{sender_name}: {message_preview}"
+    },
+    "missed_call": {
+      "title": "Пропущенный звонок",
+      "body": "{caller_name} звонил вам"
+    },
+    "incoming_call": {
+      "title": "Входящий звонок",
+      "body": "{caller_name} звонит"
+    },
+    "new_room_assigned": {
+      "title": "Новый чат",
+      "body": "Вам назначен новый клиент"
+    }
+  }
+}

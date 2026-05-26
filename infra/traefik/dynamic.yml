@@ -1,0 +1,126 @@
+# Traefik v3 — Dynamic Configuration
+# Statik config docker-compose.yml command'idan o'qiladi
+
+http:
+  routers:
+    # ── Auth Service ──────────────────────────────────────────────────────────
+    auth:
+      rule: "PathPrefix(`/api/v1/auth`)"
+      entrypoints: ["web"]
+      service: auth-service
+      middlewares: ["strip-api-prefix", "cors"]
+
+    # ── Chat Service ──────────────────────────────────────────────────────────
+    chat:
+      rule: "PathPrefix(`/api/v1/rooms`) || PathPrefix(`/api/v1/messages`) || PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/support`)"
+      entrypoints: ["web"]
+      service: chat-service
+      middlewares: ["strip-api-prefix", "cors"]
+
+    # ── Presence Service ──────────────────────────────────────────────────────
+    presence:
+      rule: "PathPrefix(`/api/v1/presence`) || PathPrefix(`/api/v1/operator`)"
+      entrypoints: ["web"]
+      service: presence-service
+      middlewares: ["strip-api-prefix", "cors"]
+
+    # ── Media Service ─────────────────────────────────────────────────────────
+    media:
+      rule: "PathPrefix(`/api/v1/media`)"
+      entrypoints: ["web"]
+      service: media-service
+      middlewares: ["strip-api-prefix", "cors"]
+
+    # ── Call Service ──────────────────────────────────────────────────────────
+    calls:
+      rule: "PathPrefix(`/api/v1/calls`)"
+      entrypoints: ["web"]
+      service: call-service
+      middlewares: ["strip-api-prefix", "cors"]
+
+    # ── Recording Service ─────────────────────────────────────────────────────
+    recordings:
+      rule: "PathPrefix(`/api/v1/recordings`)"
+      entrypoints: ["web"]
+      service: recording-service
+      middlewares: ["strip-api-prefix", "cors"]
+
+    # ── Centrifugo WebSocket ───────────────────────────────────────────────────
+    centrifugo-ws:
+      rule: "PathPrefix(`/connection/websocket`)"
+      entrypoints: ["web"]
+      service: centrifugo
+      middlewares: ["cors"]
+
+    # ── Centrifugo API (internal) ─────────────────────────────────────────────
+    centrifugo-api:
+      rule: "PathPrefix(`/centrifugo`)"
+      entrypoints: ["web"]
+      service: centrifugo
+      middlewares: ["strip-centrifugo-prefix"]
+
+  services:
+    auth-service:
+      loadBalancer:
+        servers:
+          - url: "http://auth-service:3001"
+
+    chat-service:
+      loadBalancer:
+        servers:
+          - url: "http://chat-service:3002"
+
+    presence-service:
+      loadBalancer:
+        servers:
+          - url: "http://presence-service:3003"
+
+    media-service:
+      loadBalancer:
+        servers:
+          - url: "http://media-service:3004"
+
+    call-service:
+      loadBalancer:
+        servers:
+          - url: "http://call-service:3005"
+
+    recording-service:
+      loadBalancer:
+        servers:
+          - url: "http://recording-service:3007"
+
+    centrifugo:
+      loadBalancer:
+        servers:
+          - url: "http://centrifugo:8000"
+
+  middlewares:
+    strip-api-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/v1"
+
+    strip-centrifugo-prefix:
+      stripPrefix:
+        prefixes:
+          - "/centrifugo"
+
+    cors:
+      headers:
+        accessControlAllowOriginList:
+          - "*"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+          - "X-Requested-With"
+          - "X-Nova-Signature"
+        accessControlMaxAge: 86400
+        addVaryHeader: true

@@ -1,0 +1,89 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    project: nova-chat
+
+rule_files:
+  # - "alerts/*.yml"
+
+scrape_configs:
+  # ── Prometheus o'zi ───────────────────────────────────────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ── Mikroservislar ─────────────────────────────────────────────────────────────
+  - job_name: auth-service
+    static_configs:
+      - targets: ["auth-service:3001"]
+    metrics_path: /metrics
+
+  - job_name: chat-service
+    static_configs:
+      - targets: ["chat-service:3002"]
+    metrics_path: /metrics
+
+  - job_name: presence-service
+    static_configs:
+      - targets: ["presence-service:3003"]
+    metrics_path: /metrics
+
+  - job_name: media-service
+    static_configs:
+      - targets: ["media-service:3004"]
+    metrics_path: /metrics
+
+  - job_name: call-service
+    static_configs:
+      - targets: ["call-service:3005"]
+    metrics_path: /metrics
+
+  - job_name: notification-service
+    static_configs:
+      - targets: ["notification-service:3006"]
+    metrics_path: /metrics
+
+  - job_name: recording-service
+    static_configs:
+      - targets: ["recording-service:3007"]
+    metrics_path: /metrics
+
+  # ── Centrifugo ────────────────────────────────────────────────────────────────
+  - job_name: centrifugo
+    static_configs:
+      - targets: ["centrifugo:8000"]
+    metrics_path: /metrics
+
+  # ── Infrastructure ────────────────────────────────────────────────────────────
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres:5432"]
+    # postgres_exporter keyingi versiyada qo'shiladi
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis:6379"]
+    # redis_exporter keyingi versiyada qo'shiladi
+
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq:15672"]
+    metrics_path: /metrics
+
+  - job_name: meilisearch
+    static_configs:
+      - targets: ["meilisearch:7700"]
+    metrics_path: /metrics
+
+  # ── Traefik ───────────────────────────────────────────────────────────────────
+  - job_name: traefik
+    static_configs:
+      - targets: ["traefik:8080"]
+    metrics_path: /metrics
+
+  # ── Loki ──────────────────────────────────────────────────────────────────────
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+    metrics_path: /metrics

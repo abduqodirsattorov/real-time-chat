@@ -1,0 +1,47 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Secrets (hech qachon commit qilmang!)
+secrets/*.json
+secrets/*.p8
+secrets/*.pem
+secrets/*.key
+!secrets/.gitkeep
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+
+# Logs
+*.log
+logs/
+
+# Tests
+coverage/
+tests/load/results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.docker/
+
+# Backups
+backups/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

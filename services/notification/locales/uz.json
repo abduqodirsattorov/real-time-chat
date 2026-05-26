@@ -1,0 +1,20 @@
+{
+  "notification": {
+    "new_message": {
+      "title": "Yangi xabar",
+      "body": "{sender_name}: {message_preview}"
+    },
+    "missed_call": {
+      "title": "Javobsiz qo'ng'iroq",
+      "body": "{caller_name} sizga qo'ng'iroq qildi"
+    },
+    "incoming_call": {
+      "title": "Kiruvchi qo'ng'iroq",
+      "body": "{caller_name} qo'ng'iroq qilmoqda"
+    },
+    "new_room_assigned": {
+      "title": "Yangi suhbat",
+      "body": "Sizga yangi mijoz biriktirildi"
+    }
+  }
+}
