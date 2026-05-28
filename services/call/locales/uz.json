@@ -1,0 +1,12 @@
+{
+  "call": {
+    "incoming": "Kiruvchi qo'ng'iroq",
+    "connected": "Qo'ng'iroq ulandi",
+    "ended": "Qo'ng'iroq tugadi",
+    "waiting": "Operator qidirilyapti, kuting...",
+    "transfer": "Qo'ng'iroq boshqa operatorga o'tkazilmoqda"
+  },
+  "recording": {
+    "announcement": "Ushbu qo'ng'iroq yozib olinishi mumkin. Davom etish orqali rozilik bildirasiz."
+  }
+}

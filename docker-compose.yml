@@ -315,27 +315,44 @@ services:
     restart: unless-stopped
 
   call-service:
-    # PHASE 1 STUB — Phase 6 da real NestJS kodi bilan almashtiriladi
-    image: node:20-alpine
-    command: >
-      sh -c "node -e \"
-        const h=require('http');
-        h.createServer((q,s)=>{
-          s.writeHead(200,{'Content-Type':'application/json'});
-          s.end(JSON.stringify({status:'ok',service:'call-service',phase:'stub'}));
-        }).listen(3005);
-        console.log('[call-service] Phase 1 stub — port 3005');
-      \""
+    build:
+      context: ./services/call
+      dockerfile: Dockerfile
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
+      CENTRIFUGO_API_URL: http://centrifugo:8000/api
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      LIVEKIT_HOST: http://host.docker.internal:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_SECRET: ${LIVEKIT_SECRET:-devsecret_change_me_32_chars_minimum_xx}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      RECORDING_BUCKET: nova-recordings
+      RECORDING_ANNOUNCEMENT_URL_UZ: http://minio:9000/nova-media/sys/recording_uz.mp3
+      RECORDING_ANNOUNCEMENT_URL_RU: http://minio:9000/nova-media/sys/recording_ru.mp3
+      HOLD_MUSIC_URL: http://minio:9000/nova-media/sys/hold_music.mp3
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3005
     ports:
       - "3005:3005"
     networks:
       - nova-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3005/healthz"]
       interval: 10s
       timeout: 5s
+      start_period: 60s
       retries: 5
     restart: unless-stopped
 
