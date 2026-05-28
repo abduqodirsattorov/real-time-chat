@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { authApi, type LoginStep2Res } from '@/api/auth';
+import { authApi, type VerifyRes, type MeRes } from '@/api/auth';
 import { useCentrifugeStore } from './centrifuge';
 import { usePresenceStore } from './presence';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('access_token'));
   const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'));
-  const user = ref<LoginStep2Res['user'] | null>(null);
+  const user = ref<MeRes | null>(null);
 
   const isAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'supervisor');
 
@@ -18,9 +18,10 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('refresh_token', refresh);
   }
 
-  async function afterLogin(data: LoginStep2Res) {
+  async function afterLogin(data: VerifyRes) {
     setTokens(data.accessToken, data.refreshToken);
-    user.value = data.user;
+    // /auth/otp/verify doesn't return user — load separately
+    await loadMe();
 
     const centrifuge = useCentrifugeStore();
     await centrifuge.connect();
@@ -38,9 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    if (refreshToken.value) {
-      try { await authApi.logout(refreshToken.value); } catch { /* ignore */ }
-    }
+    try { await authApi.logout(); } catch { /* ignore */ }
     const centrifuge = useCentrifugeStore();
     centrifuge.disconnect();
 

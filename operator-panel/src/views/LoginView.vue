@@ -63,7 +63,6 @@ const auth = useAuthStore();
 const step = ref(1);
 const phone = ref('');
 const code = ref('');
-const sessionId = ref('');
 const loading = ref(false);
 const error = ref('');
 
@@ -76,9 +75,9 @@ async function sendOtp() {
   error.value = '';
   loading.value = true;
   try {
-    const res = await authApi.sendOtp(phone.value);
-    sessionId.value = res.sessionId;
+    await authApi.sendOtp(phone.value);
     step.value = 2;
+    // OTP auth-service logida ko'rinadi: docker compose logs auth-service | grep OTP
   } catch (e: unknown) {
     error.value = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.error');
   } finally {
@@ -90,7 +89,7 @@ async function verifyOtp() {
   error.value = '';
   loading.value = true;
   try {
-    const data = await authApi.verifyOtp(sessionId.value, code.value);
+    const data = await authApi.verifyOtp(phone.value, code.value);
     await auth.afterLogin(data);
     router.push('/chat');
   } catch (e: unknown) {

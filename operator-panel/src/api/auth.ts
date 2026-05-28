@@ -1,35 +1,41 @@
 import { api } from './client';
 
-export interface LoginStep1Res {
-  sessionId: string;
+export interface LoginRes {
+  message: string;
+  ttl: number;
 }
 
-export interface LoginStep2Res {
+export interface VerifyRes {
   accessToken: string;
   refreshToken: string;
-  user: {
-    id: string;
-    phone: string;
-    fullName: string;
-    role: string;
-  };
+  tokenType: string;
+  expiresIn: number;
+}
+
+export interface MeRes {
+  id: string;
+  phone: string;
+  fullName: string;
+  role: string;
 }
 
 export const authApi = {
-  sendOtp(phone: string): Promise<LoginStep1Res> {
+  /** Step 1: telefon raqam yuborish — OTP chiqariladi (auth-service logda ko'rinadi) */
+  sendOtp(phone: string): Promise<LoginRes> {
     return api.post('/auth/login', { phone }).then((r) => r.data);
   },
 
-  verifyOtp(sessionId: string, code: string): Promise<LoginStep2Res> {
-    return api.post('/auth/verify', { sessionId, code }).then((r) => r.data);
+  /** Step 2: POST /auth/otp/verify { phone, otp } → tokens */
+  verifyOtp(phone: string, otp: string): Promise<VerifyRes> {
+    return api.post('/auth/otp/verify', { phone, otp }).then((r) => r.data);
   },
 
-  me() {
+  me(): Promise<MeRes> {
     return api.get('/auth/me').then((r) => r.data);
   },
 
-  logout(refreshToken: string) {
-    return api.post('/auth/logout', { refreshToken });
+  logout() {
+    return api.post('/auth/logout');
   },
 
   centrifugoToken() {
@@ -38,7 +44,7 @@ export const authApi = {
 
   centrifugoSubscribeToken(channel: string) {
     return api
-      .post('/auth/centrifugo/subscribe-token', { channel })
+      .post('/auth/centrifugo/subscribe', { channel })
       .then((r) => r.data as { token: string });
   },
 };
