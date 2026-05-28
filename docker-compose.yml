@@ -462,6 +462,20 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ─── Operator Panel ───────────────────────────────────────────────────────────
+
+  operator-panel:
+    build:
+      context: ./operator-panel
+      dockerfile: Dockerfile
+    ports:
+      - "8090:80"
+    networks:
+      - nova-net
+    depends_on:
+      - traefik
+    restart: unless-stopped
+
   # ─── API Gateway ──────────────────────────────────────────────────────────────
 
   traefik:

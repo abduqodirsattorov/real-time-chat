@@ -1,0 +1,28 @@
+{
+  "name": "operator-panel",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .vue,.ts"
+  },
+  "dependencies": {
+    "@centrifuge/centrifuge-js": "^5.3.0",
+    "@livekit/components-vue": "^2.0.0",
+    "axios": "^1.6.7",
+    "livekit-client": "^2.3.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-i18n": "^9.10.1",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@vitejs/plugin-vue": "^5.0.3",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.4",
+    "vue-tsc": "^1.8.27"
+  }
+}

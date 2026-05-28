@@ -1,0 +1,67 @@
+{
+  "login": {
+    "title": "Nova Chat",
+    "subtitle": "Operator paneli",
+    "phone": "Telefon raqam",
+    "phonePlaceholder": "+998901234567",
+    "sendCode": "Kod yuborish",
+    "code": "Tasdiqlash kodi",
+    "codePlaceholder": "123456",
+    "verify": "Tasdiqlash",
+    "back": "Orqaga",
+    "sending": "Yuborilmoqda...",
+    "verifying": "Tekshirilmoqda..."
+  },
+  "chat": {
+    "noRoom": "Suhbatni tanlang",
+    "typeMessage": "Xabar yozing...",
+    "send": "Yuborish",
+    "typing": "yozmoqda...",
+    "close": "Yopish",
+    "searchRooms": "Qidirish...",
+    "noRooms": "Ochiq suhbatlar yo'q"
+  },
+  "call": {
+    "incoming": "Kiruvchi qo'ng'iroq",
+    "answer": "Qabul qilish",
+    "reject": "Rad etish",
+    "hangup": "Tugatish",
+    "hold": "Kutish",
+    "resume": "Davom etish",
+    "mute": "Ovozni o'chirish",
+    "unmute": "Ovozni yoqish",
+    "transfer": "O'tkazish",
+    "recording": "Yozib olish",
+    "stopRecording": "To'xtatish",
+    "consentAck": "Rozilikni tasdiqlash",
+    "active": "Faol qo'ng'iroq",
+    "status": {
+      "ringing": "Jiringlayapti",
+      "connected": "Ulangan",
+      "on_hold": "Kutishda",
+      "ended": "Tugatildi"
+    }
+  },
+  "presence": {
+    "available": "Mavjud",
+    "busy": "Band",
+    "away": "Uzoqda",
+    "offline": "Oflayn"
+  },
+  "transfer": {
+    "title": "Qo'ng'iroqni o'tkazish",
+    "cold": "Sovuq o'tkazish",
+    "warm": "Issiq o'tkazish",
+    "complete": "Tugatish",
+    "cancel": "Bekor qilish",
+    "selectOperator": "Operatorni tanlang"
+  },
+  "common": {
+    "loading": "Yuklanmoqda...",
+    "error": "Xato yuz berdi",
+    "retry": "Qayta urinish",
+    "logout": "Chiqish",
+    "save": "Saqlash",
+    "cancel": "Bekor qilish"
+  }
+}
