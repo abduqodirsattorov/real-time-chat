@@ -157,9 +157,23 @@ services:
   livekit:
     image: livekit/livekit-server:latest
     command: --config /etc/livekit.yaml
-    network_mode: host
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
     volumes:
       - ./infra/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    networks:
+      - nova-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:7880 || exit 0"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     restart: unless-stopped
 
   livekit-egress:
@@ -168,7 +182,8 @@ services:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
     volumes:
       - ./infra/livekit/egress.yaml:/etc/egress.yaml:ro
-    network_mode: host
+    networks:
+      - nova-net
     restart: unless-stopped
     depends_on:
       - livekit
@@ -325,7 +340,8 @@ services:
       CENTRIFUGO_API_URL: http://centrifugo:8000/api
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
-      LIVEKIT_HOST: http://host.docker.internal:7880
+      LIVEKIT_HOST: http://livekit:7880
+      LIVEKIT_WS_URL: ${LIVEKIT_WS_URL:-ws://localhost:7880}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_SECRET: ${LIVEKIT_SECRET:-devsecret_change_me_32_chars_minimum_xx}
       MINIO_ENDPOINT: http://minio:9000
@@ -348,6 +364,8 @@ services:
       redis:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      livekit:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3005/healthz"]
@@ -407,7 +425,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MINIO_BUCKET: nova-recordings
       MINIO_ENDPOINT_INTERNAL: http://minio:9000
-      LIVEKIT_HOST: http://host.docker.internal:7880
+      LIVEKIT_HOST: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_SECRET: ${LIVEKIT_SECRET:-devsecret_change_me_32_chars_minimum_xx}
       JWT_SECRET: ${JWT_SECRET}

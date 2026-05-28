@@ -25,7 +25,7 @@ export class LiveKitController {
   async getToken(@CurrentUser() user: JwtUser, @Body() dto: TokenDto) {
     const call = await this.calls.getCall(dto.callId);
     const token = await this.livekit.generateToken(user.sub, call.livekitRoom!);
-    return { token, room: call.livekitRoom };
+    return { token, url: this.livekit.wsUrl, room: call.livekitRoom };
   }
 
   @Post('webhook')

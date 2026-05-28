@@ -1,18 +1,18 @@
-# LiveKit Egress — Recording Service Config
-# Qaydlar MinIO'ga (S3-compatible) saqlanadi
+# LiveKit Egress — Recording (bridge network config)
+# localhost o'rniga docker service nomlari ishlatiladi
 
 api_key: devkey
 api_secret: devsecret_change_me_32_chars_minimum_xx
-ws_url: ws://localhost:7880
+ws_url: ws://livekit:7880
 
 redis:
-  address: localhost:6379
+  address: redis:6379
 
 s3:
   access_key: minioadmin
   secret: minioadmin123
   region: us-east-1
-  endpoint: http://localhost:9000
+  endpoint: http://minio:9000
   force_path_style: true
   bucket: nova-recordings
 

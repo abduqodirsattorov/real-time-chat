@@ -114,7 +114,14 @@ export class CallsService {
     const operatorToken = await this.livekit.generateToken(user.sub, call.livekitRoom!);
 
     this.logger.log({ event: 'call_answered', callId, operatorId: user.sub });
-    return { callId, status: 'connected', livekitRoom: call.livekitRoom, callerToken, operatorToken };
+    return {
+      callId,
+      status: 'connected',
+      livekitRoom: call.livekitRoom,
+      livekitUrl: this.livekit.wsUrl,
+      callerToken,
+      operatorToken,
+    };
   }
 
   async hangupCall(user: JwtUser, callId: string, cause?: string) {

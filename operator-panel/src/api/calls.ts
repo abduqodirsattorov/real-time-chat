@@ -7,7 +7,9 @@ export interface Call {
   status: string;
   direction: string;
   livekitRoom: string;
+  /** JWT token for the operator to join the LiveKit room */
   operatorToken?: string;
+  /** Public WebSocket URL for the browser to connect — ws://localhost:7880 in dev */
   livekitUrl?: string;
   startedAt: string | null;
   endedAt: string | null;
@@ -46,7 +48,7 @@ export const callsApi = {
 
   getLivekitToken(callId: string) {
     return api
-      .get<{ token: string; url: string }>(`/calls/livekit/token`, { params: { callId } })
+      .post<{ token: string; url: string; room: string }>(`/calls/livekit/token`, { callId })
       .then((r) => r.data);
   },
 

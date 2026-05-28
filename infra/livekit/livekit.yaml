@@ -1,17 +1,23 @@
-# LiveKit Server — Local Development Config
-# network_mode: host — WebRTC UDP portlari uchun
-# Windows'da: Phase 6'da port-mapping + TURN alternative qo'shamiz
+# LiveKit Server — Local Development (Windows WSL2 / Docker Desktop)
+# network_mode: host Linux'da ishlaydigan edi, Windows'da ishlamaydi.
+# Bridge network + port mapping ishlatamiz:
+#   - Browser localhost:7880 (HTTP signaling) ga ulanadi
+#   - WebRTC UDP: 50000-50100 portlar Docker Desktop orqali forward qilinadi
+# node_ip: 127.0.0.1 — browser ulanishlarini localhost orqali yo'naltiradi
 
 port: 7880
 bind_addresses:
   - ""
 
+# WebRTC'da browser qaysi IP:port'ga UDP yuborishi kerakligini bilishi uchun
+# node_ip localhost bo'lishi kerak — Docker Desktop portlarni host'ga forward qiladi
+node_ip: "127.0.0.1"
+
 rtc:
   tcp_port: 7881
   port_range_start: 50000
-  port_range_end: 60000
+  port_range_end: 50100
   use_external_ip: false
-  # Windows'da muammo bo'lsa false qiling:
   use_ice_lite: false
 
 keys:
@@ -24,19 +30,19 @@ room:
   departure_timeout: 20
   enable_remote_unmute: true
 
+# Bridge network'da redis service nomini ishlatamiz
 redis:
-  address: localhost:6379
+  address: redis:6379
 
 logging:
   level: info
   json: true
 
 turn:
-  # Lokal dev uchun o'chirilgan — Phase 6'da STUN/TURN yoqiladi
   enabled: false
 
 webhook:
   api_key: devkey
   urls:
-    - http://localhost:3005/livekit/webhook
-    - http://localhost:3007/webhooks/livekit/egress
+    - http://call-service:3005/livekit/webhook
+    - http://recording-service:3007/webhooks/livekit/egress

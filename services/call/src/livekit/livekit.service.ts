@@ -14,6 +14,8 @@ export class LiveKitService {
   private readonly host = process.env.LIVEKIT_HOST ?? 'http://localhost:7880';
   private readonly apiKey = process.env.LIVEKIT_API_KEY ?? 'devkey';
   private readonly secret = process.env.LIVEKIT_SECRET ?? 'devsecret_change_me_32_chars_minimum_xx';
+  // Public WS URL returned to browser clients — differs from internal host
+  readonly wsUrl = process.env.LIVEKIT_WS_URL ?? 'ws://localhost:7880';
 
   private readonly roomClient: RoomServiceClient;
   private readonly egressClient: EgressClient;

@@ -19,8 +19,13 @@ export const useCallsStore = defineStore('calls', () => {
     isOnHold.value = false;
     isMuted.value = false;
 
-    if (call.livekitRoom && call.operatorToken && call.livekitUrl) {
-      await connectLiveKit(call.livekitUrl, call.livekitRoom, call.operatorToken);
+    if (call.livekitRoom && call.operatorToken) {
+      let url = call.livekitUrl;
+      if (!url) {
+        const tokenData = await callsApi.getLivekitToken(callId);
+        url = tokenData.url;
+      }
+      if (url) await connectLiveKit(url, call.livekitRoom, call.operatorToken);
     }
   }
 
