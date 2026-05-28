@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { Centrifuge, type Subscription } from '@centrifuge/centrifuge-js';
+import { Centrifuge, type Subscription } from 'centrifuge';
 import { authApi } from '@/api/auth';
 
 export const useCentrifugeStore = defineStore('centrifuge', () => {
