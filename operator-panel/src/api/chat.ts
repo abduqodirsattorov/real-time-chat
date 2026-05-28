@@ -2,12 +2,16 @@ import { api } from './client';
 
 export interface Room {
   id: string;
+  type: string;
   status: string;
-  createdAt: string;
+  title: string | null;
+  customerId: string | null;
+  operatorId: string | null;
   lastMessageAt: string | null;
-  customer: { id: string; fullName: string; phone: string };
-  assignedOperator: { id: string; fullName: string } | null;
-  unreadCount: number;
+  botHandled: boolean;
+  createdAt: string;
+  closedAt: string | null;
+  members: { userId: string; joinedAt: string }[];
 }
 
 export interface Message {
@@ -16,24 +20,33 @@ export interface Message {
   senderId: string;
   type: string;
   content: string | null;
-  mediaUrl: string | null;
+  replyToId: string | null;
+  editedAt: string | null;
+  deletedAt: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
-  sender: { id: string; fullName: string; role: string };
+}
+
+export type RoomStatus = 'active' | 'pending' | 'closed' | 'archived';
+
+export interface PagedResult<T> {
+  items: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export const chatApi = {
-  getRooms(params?: { status?: string; page?: number; limit?: number }) {
-    return api.get<{ rooms: Room[]; total: number }>('/rooms', { params }).then((r) => r.data);
+  getRooms(params?: { status?: RoomStatus; cursor?: string; limit?: number }) {
+    return api.get<PagedResult<Room>>('/rooms', { params }).then((r) => r.data);
   },
 
   getRoom(id: string) {
     return api.get<Room>(`/rooms/${id}`).then((r) => r.data);
   },
 
-  getMessages(roomId: string, params?: { before?: string; limit?: number }) {
+  getMessages(roomId: string, params?: { cursor?: string; limit?: number }) {
     return api
-      .get<{ messages: Message[]; hasMore: boolean }>(`/rooms/${roomId}/messages`, { params })
+      .get<PagedResult<Message>>(`/rooms/${roomId}/messages`, { params })
       .then((r) => r.data);
   },
 
@@ -42,14 +55,14 @@ export const chatApi = {
   },
 
   sendTyping(roomId: string) {
-    return api.post(`/rooms/${roomId}/typing`);
+    return api.post(`/rooms/${roomId}/typing`, { typing: true });
   },
 
-  markRead(roomId: string, lastMessageId: string) {
-    return api.post(`/rooms/${roomId}/read`, { lastMessageId });
+  markRead(roomId: string, messageId: string) {
+    return api.post(`/messages/${messageId}/read`);
   },
 
   closeRoom(roomId: string) {
-    return api.patch(`/rooms/${roomId}`, { status: 'closed' });
+    return api.post(`/rooms/${roomId}/close`);
   },
 };

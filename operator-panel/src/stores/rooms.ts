@@ -14,20 +14,24 @@ export const useRoomsStore = defineStore('rooms', () => {
   const centrifuge = useCentrifugeStore();
   const auth = useAuthStore();
 
-  let typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  const typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
   async function loadRooms() {
-    const data = await chatApi.getRooms({ status: 'open' });
-    rooms.value = data.rooms;
+    // Load active + pending rooms without status filter (operators see all)
+    const data = await chatApi.getRooms({ limit: 50 });
+    rooms.value = data.items;
   }
 
   async function selectRoom(roomId: string) {
     activeRoomId.value = roomId;
     if (!messages.value[roomId]) {
       loadingMessages.value = true;
-      const data = await chatApi.getMessages(roomId, { limit: 50 });
-      messages.value[roomId] = data.messages;
-      loadingMessages.value = false;
+      try {
+        const data = await chatApi.getMessages(roomId, { limit: 50 });
+        messages.value[roomId] = data.items;
+      } finally {
+        loadingMessages.value = false;
+      }
     }
     await subscribeRoom(roomId);
   }
@@ -52,8 +56,10 @@ export const useRoomsStore = defineStore('rooms', () => {
   }
 
   function updateRoomLastMessage(roomId: string) {
-    const room = rooms.value.find((r) => r.id === roomId);
-    if (room) room.lastMessageAt = new Date().toISOString();
+    const idx = rooms.value.findIndex((r) => r.id === roomId);
+    if (idx >= 0) {
+      rooms.value[idx] = { ...rooms.value[idx], lastMessageAt: new Date().toISOString() };
+    }
     rooms.value = [...rooms.value].sort((a, b) => {
       const ta = a.lastMessageAt ?? a.createdAt;
       const tb = b.lastMessageAt ?? b.createdAt;

@@ -1,12 +1,10 @@
 <template>
   <div class="message-list-wrapper">
     <div class="message-list-header">
-      <div v-if="room" class="room-title">
-        {{ room.customer?.fullName ?? room.customer?.phone }}
-      </div>
+      <div v-if="room" class="room-title">{{ roomLabel }}</div>
       <div class="header-actions">
         <button
-          v-if="room?.status === 'open'"
+          v-if="room && room.status !== 'closed'"
           class="close-btn"
           @click="closeRoom"
         >
@@ -19,24 +17,21 @@
       <div
         v-for="msg in roomMessages"
         :key="msg.id"
-        :class="['message', msg.senderId === auth.user?.id ? 'own' : 'other']"
+        :class="['message', getMessageClass(msg)]"
       >
         <div class="bubble">
-          <div v-if="msg.senderId !== auth.user?.id" class="sender-name">
-            {{ msg.sender?.fullName ?? 'Unknown' }}
+          <div v-if="!isOwn(msg) && msg.type !== 'system'" class="sender-name">
+            {{ senderLabel(msg.senderId) }}
           </div>
-          <template v-if="msg.type === 'text'">
-            <p class="text">{{ msg.content }}</p>
-          </template>
-          <template v-else-if="msg.type === 'image' && msg.mediaUrl">
-            <img :src="msg.mediaUrl" class="media-img" @load="scrollToBottom" />
-          </template>
-          <template v-else>
-            <p class="text system-text">{{ msg.content }}</p>
-          </template>
+          <p v-if="msg.type === 'system'" class="text system-text">
+            {{ parseSystemContent(msg.content) }}
+          </p>
+          <p v-else class="text">{{ msg.content }}</p>
           <span class="time">{{ formatTime(msg.createdAt) }}</span>
         </div>
       </div>
+
+      <div v-if="rooms.loadingMessages" class="loading">{{ t('common.loading') }}</div>
     </div>
   </div>
 </template>
@@ -47,15 +42,23 @@ import { useI18n } from 'vue-i18n';
 import { useRoomsStore } from '@/stores/rooms';
 import { useAuthStore } from '@/stores/auth';
 import { chatApi } from '@/api/chat';
+import type { Message } from '@/api/chat';
 
 const props = defineProps<{ roomId: string }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const rooms = useRoomsStore();
 const auth = useAuthStore();
 const scrollEl = ref<HTMLDivElement | null>(null);
 
 const room = computed(() => rooms.rooms.find((r) => r.id === props.roomId));
 const roomMessages = computed(() => rooms.messages[props.roomId] ?? []);
+
+const roomLabel = computed(() => {
+  if (!room.value) return '';
+  if (room.value.title) return room.value.title;
+  if (room.value.customerId) return `Mijoz #${room.value.customerId.slice(0, 6)}`;
+  return `Room ${props.roomId.slice(0, 6)}`;
+});
 
 watch(
   () => roomMessages.value.length,
@@ -65,15 +68,36 @@ watch(
 onMounted(() => nextTick(scrollToBottom));
 
 function scrollToBottom() {
-  if (scrollEl.value) {
-    scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
-  }
+  if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
 }
 
-async function onScroll() {
-  if (!scrollEl.value) return;
-  if (scrollEl.value.scrollTop < 40) {
-    // TODO: load older messages
+function onScroll() {
+  // TODO: load older messages on scroll to top
+}
+
+function isOwn(msg: Message) {
+  return msg.senderId === auth.user?.id;
+}
+
+function getMessageClass(msg: Message) {
+  if (msg.type === 'system') return 'system';
+  return isOwn(msg) ? 'own' : 'other';
+}
+
+function senderLabel(senderId: string) {
+  if (senderId === auth.user?.id) return auth.user?.fullName ?? 'Siz';
+  const member = room.value?.members.find((m) => m.userId === senderId);
+  if (member) return `Mijoz #${senderId.slice(0, 6)}`;
+  return `#${senderId.slice(0, 6)}`;
+}
+
+function parseSystemContent(content: string | null): string {
+  if (!content) return '';
+  try {
+    const parsed = JSON.parse(content);
+    return parsed[locale.value] ?? parsed.uz ?? parsed.ru ?? content;
+  } catch {
+    return content;
   }
 }
 
@@ -121,9 +145,7 @@ function formatTime(iso: string) {
   color: #666;
 }
 
-.close-btn:hover {
-  background: #f7fafc;
-}
+.close-btn:hover { background: #f7fafc; }
 
 .messages {
   flex: 1;
@@ -139,8 +161,13 @@ function formatTime(iso: string) {
   display: flex;
 }
 
-.message.own {
-  justify-content: flex-end;
+.message.own { justify-content: flex-end; }
+.message.system { justify-content: center; }
+
+.message.system .bubble {
+  background: transparent;
+  box-shadow: none;
+  padding: 4px 12px;
 }
 
 .bubble {
@@ -149,7 +176,6 @@ function formatTime(iso: string) {
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-  position: relative;
 }
 
 .message.own .bubble {
@@ -172,19 +198,13 @@ function formatTime(iso: string) {
 }
 
 .system-text {
-  color: #999;
+  color: #888;
   font-style: italic;
-  font-size: 13px;
+  font-size: 12px;
+  text-align: center;
 }
 
-.message.own .text {
-  color: #fff;
-}
-
-.media-img {
-  max-width: 240px;
-  border-radius: 8px;
-}
+.message.own .text { color: #fff; }
 
 .time {
   display: block;
@@ -194,7 +214,12 @@ function formatTime(iso: string) {
   text-align: right;
 }
 
-.message.own .time {
-  color: rgba(255, 255, 255, 0.7);
+.message.own .time { color: rgba(255, 255, 255, 0.7); }
+
+.loading {
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+  padding: 20px;
 }
 </style>

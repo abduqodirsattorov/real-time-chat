@@ -15,9 +15,9 @@
         :class="['room-item', { active: rooms.activeRoomId === room.id }]"
         @click="selectRoom(room.id)"
       >
-        <div class="room-avatar">{{ initials(room.customer?.fullName) }}</div>
+        <div class="room-avatar">{{ initials(roomLabel(room)) }}</div>
         <div class="room-info">
-          <div class="room-name">{{ room.customer?.fullName ?? room.customer?.phone }}</div>
+          <div class="room-name">{{ roomLabel(room) }}</div>
           <div class="room-meta">
             <span :class="['status-badge', room.status]">{{ room.status }}</span>
             <span v-if="rooms.typingRooms.has(room.id)" class="typing-indicator">
@@ -39,18 +39,22 @@ import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useRoomsStore } from '@/stores/rooms';
+import type { Room } from '@/api/chat';
 
 const { t } = useI18n();
 const router = useRouter();
 const rooms = useRoomsStore();
 const search = ref('');
 
+function roomLabel(room: Room): string {
+  if (room.title) return room.title;
+  if (room.customerId) return `Mijoz #${room.customerId.slice(0, 6)}`;
+  return `Room ${room.id.slice(0, 6)}`;
+}
+
 const filteredRooms = computed(() => {
   const q = search.value.toLowerCase();
-  return rooms.rooms.filter((r) => {
-    const name = (r.customer?.fullName ?? r.customer?.phone ?? '').toLowerCase();
-    return name.includes(q);
-  });
+  return rooms.rooms.filter((r) => roomLabel(r).toLowerCase().includes(q));
 });
 
 async function selectRoom(roomId: string) {
@@ -58,9 +62,8 @@ async function selectRoom(roomId: string) {
   router.push(`/chat/${roomId}`);
 }
 
-function initials(name?: string) {
-  if (!name) return '?';
-  return name
+function initials(label: string) {
+  return label
     .split(' ')
     .slice(0, 2)
     .map((w) => w[0])
@@ -118,13 +121,8 @@ function formatTime(iso: string) {
   transition: background 0.15s;
 }
 
-.room-item:hover {
-  background: #f0f4f8;
-}
-
-.room-item.active {
-  background: #e8f0fe;
-}
+.room-item:hover { background: #f0f4f8; }
+.room-item.active { background: #e8f0fe; }
 
 .room-avatar {
   width: 40px;
@@ -168,10 +166,12 @@ function formatTime(iso: string) {
   font-weight: 500;
 }
 
-.status-badge.open { background: #c6f6d5; color: #276749; }
-.status-badge.closed { background: #e2e8f0; color: #4a5568; }
-.status-badge.bot_handling { background: #bee3f8; color: #2b6cb0; }
+.status-badge.active  { background: #c6f6d5; color: #276749; }
 .status-badge.pending { background: #fefcbf; color: #744210; }
+.status-badge.closed  { background: #e2e8f0; color: #4a5568; }
+.status-badge.archived { background: #e2e8f0; color: #4a5568; }
+.status-badge.bot_handling { background: #bee3f8; color: #2b6cb0; }
+.status-badge.open    { background: #c6f6d5; color: #276749; }
 
 .typing-indicator {
   font-size: 11px;
