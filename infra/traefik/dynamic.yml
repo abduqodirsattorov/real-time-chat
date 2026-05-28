@@ -45,6 +45,13 @@ http:
       service: recording-service
       middlewares: ["strip-api-prefix", "cors"]
 
+    # ── Bot Gateway
+    bot:
+      rule: "PathPrefix(`/api/v1/bot`)"
+      entrypoints: ["web"]
+      service: bot-gateway
+      middlewares: ["strip-api-prefix", "cors"]
+
     # ── Centrifugo WebSocket ───────────────────────────────────────────────────
     centrifugo-ws:
       rule: "PathPrefix(`/connection/websocket`)"
@@ -89,6 +96,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://recording-service:3007"
+
+    bot-gateway:
+      loadBalancer:
+        servers:
+          - url: "http://bot-gateway:3008"
 
     centrifugo:
       loadBalancer:
