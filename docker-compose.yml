@@ -335,6 +335,7 @@ services:
       RECORDING_ANNOUNCEMENT_URL_UZ: http://minio:9000/nova-media/sys/recording_uz.mp3
       RECORDING_ANNOUNCEMENT_URL_RU: http://minio:9000/nova-media/sys/recording_ru.mp3
       HOLD_MUSIC_URL: http://minio:9000/nova-media/sys/hold_music.mp3
+      RECORDING_SERVICE_URL: http://recording-service:3007
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3005
     ports:
@@ -393,27 +394,41 @@ services:
     restart: unless-stopped
 
   recording-service:
-    # PHASE 1 STUB — Phase 8 da real NestJS kodi bilan almashtiriladi
-    image: node:20-alpine
-    command: >
-      sh -c "node -e \"
-        const h=require('http');
-        h.createServer((q,s)=>{
-          s.writeHead(200,{'Content-Type':'application/json'});
-          s.end(JSON.stringify({status:'ok',service:'recording-service',phase:'stub'}));
-        }).listen(3007);
-        console.log('[recording-service] Phase 1 stub — port 3007');
-      \""
+    build:
+      context: ./services/recording
+      dockerfile: Dockerfile
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: nova-recordings
+      MINIO_ENDPOINT_INTERNAL: http://minio:9000
+      LIVEKIT_HOST: http://host.docker.internal:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_SECRET: ${LIVEKIT_SECRET:-devsecret_change_me_32_chars_minimum_xx}
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3007
     ports:
       - "3007:3007"
     networks:
       - nova-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3007/healthz"]
       interval: 10s
       timeout: 5s
+      start_period: 60s
       retries: 5
     restart: unless-stopped
 

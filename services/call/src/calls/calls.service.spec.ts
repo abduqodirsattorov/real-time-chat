@@ -51,7 +51,6 @@ const mockLivekit = {
   removeParticipant: jest.fn(),
   destroyRoom: jest.fn(),
   mutePublishedTrack: jest.fn(),
-  startRecordingEgress: jest.fn().mockResolvedValue('egress-123'),
   stopEgress: jest.fn(),
 };
 
@@ -63,6 +62,7 @@ describe('CallsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    global.fetch = jest.fn();
     const module = await Test.createTestingModule({
       providers: [
         CallsService,
@@ -231,16 +231,25 @@ describe('CallsService', () => {
     expect(result.status).toBe('starting');
   });
 
-  it('T14: recordingConsentAck starts Egress only after consent', async () => {
+  it('T14: recordingConsentAck delegates to recording-service after consent', async () => {
     mockPrisma.recording.findUnique.mockResolvedValue({
       id: 'rec-1', callId: 'c1', status: 'starting', consentAnnounced: false, startedAt: new Date(),
     });
-    mockPrisma.recording.update.mockResolvedValue({ id: 'rec-1', status: 'active', egressId: 'egress-123' });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', livekitRoom: 'room-1', status: 'connected' });
+    mockPrisma.recording.update.mockResolvedValue({ id: 'rec-1', consentAnnounced: true });
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ recordingId: 'rec-1', status: 'active', egressId: 'egress-123' }),
+    });
     mockRabbitmq.publish.mockResolvedValue(undefined);
 
     const result = await service.recordingConsentAck(operatorUser, 'c1', 'rec-1');
-    expect(mockLivekit.startRecordingEgress).toHaveBeenCalledWith('c1', 'rec-1');
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/recordings/start'),
+      expect.objectContaining({ method: 'POST' }),
+    );
     expect(result.status).toBe('active');
+    expect(result.egressId).toBe('egress-123');
   });
 
   it('T15: recordingConsentAck throws if already announced', async () => {

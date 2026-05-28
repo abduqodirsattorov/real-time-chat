@@ -371,26 +371,39 @@ export class CallsService {
     if (recording.status !== 'starting') throw new BadRequestException('Recording holati noto\'g\'ri');
     if (recording.consentAnnounced) throw new ConflictException('Rozilik allaqachon tasdiqlangan');
 
+    const call = await this.getCallOrThrow(callId);
+
     await this.prisma.recording.update({
       where: { id: recordingId },
       data: { consentAnnounced: true },
     });
 
-    // ONLY now start Egress
+    // Delegate Egress to recording-service
+    const recordingServiceUrl = process.env.RECORDING_SERVICE_URL ?? 'http://recording-service:3007';
     let egressId: string | null = null;
+    let finalStatus = 'starting';
     try {
-      egressId = await this.livekit.startRecordingEgress(callId, recordingId);
-      await this.prisma.recording.update({ where: { id: recordingId }, data: { status: 'active', egressId } });
+      const res = await fetch(`${recordingServiceUrl}/recordings/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordingId, callId, livekitRoom: call.livekitRoom }),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        egressId = data.egressId ?? null;
+        finalStatus = data.status ?? (egressId ? 'active' : 'starting');
+      } else {
+        this.logger.error({ event: 'recording_service_error', status: res.status, recordingId });
+      }
     } catch (err) {
-      await this.prisma.recording.update({ where: { id: recordingId }, data: { status: 'failed', failedReason: String(err) } });
-      this.logger.error({ event: 'recording_egress_failed', recordingId, err });
+      this.logger.error({ event: 'recording_service_unreachable', recordingId, err: String(err) });
     }
 
     await this.rabbitmq.publish('call.recording.started', {
       call_id: callId, recording_id: recordingId, egress_id: egressId, ts: Date.now(),
     });
 
-    return { recordingId, status: egressId ? 'active' : 'failed', egressId };
+    return { recordingId, status: finalStatus, egressId };
   }
 
   async stopRecording(user: JwtUser, callId: string) {
