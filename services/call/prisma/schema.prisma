@@ -65,12 +65,22 @@ enum UserLocale {
   @@map("user_locale")
 }
 
+enum UserRole {
+  admin
+  supervisor
+  operator
+  customer
+  bot
+
+  @@map("user_role")
+}
+
 model User {
-  id       String  @id @db.Uuid
-  fullName String? @map("full_name")
-  phone    String  @unique
-  role     String
-  locale   String  @default("uz")
+  id       String   @id @db.Uuid
+  fullName String?  @map("full_name")
+  phone    String   @unique
+  role     UserRole @default(customer)
+  locale   String   @default("uz")
 
   @@map("users")
 }
