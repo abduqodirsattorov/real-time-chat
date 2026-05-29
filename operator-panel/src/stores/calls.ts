@@ -103,6 +103,22 @@ export const useCallsStore = defineStore('calls', () => {
     activeRecording.value = null;
   }
 
+  async function startOutbound(calleeId: string) {
+    const call = await callsApi.outbound(calleeId);
+    activeCall.value = call;
+    incomingCall.value = null;
+    isOnHold.value = false;
+    isMuted.value = false;
+    if (call.livekitRoom && call.operatorToken) {
+      let url = call.livekitUrl;
+      if (!url) {
+        const td = await callsApi.getLivekitToken(call.id);
+        url = td.url;
+      }
+      if (url) await connectLiveKit(url, call.livekitRoom, call.operatorToken);
+    }
+  }
+
   function setIncomingCall(call: Call) {
     incomingCall.value = call;
   }
@@ -134,6 +150,7 @@ export const useCallsStore = defineStore('calls', () => {
     startRecording,
     consentAck,
     stopRecording,
+    startOutbound,
     setIncomingCall,
     dismissIncoming,
   };

@@ -166,10 +166,10 @@ function parseSystemContent(content: string | null): string {
 async function startOutboundCall() {
   if (!room.value?.customerId) return;
   try {
-    const callData = await callsApi.answer(room.value.id);
-    calls.setIncomingCall(callData as Parameters<typeof calls.setIncomingCall>[0]);
-  } catch {
-    alert('Qo\'ng\'iroqni boshlash imkoni yo\'q');
+    await calls.startOutbound(room.value.customerId);
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    alert(msg ?? 'Qo\'ng\'iroqni boshlash imkoni yo\'q');
   }
 }
 

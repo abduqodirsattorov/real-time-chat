@@ -52,6 +52,10 @@ export const callsApi = {
       .then((r) => r.data);
   },
 
+  outbound(calleeId: string) {
+    return api.post<Call>('/calls/outbound', { calleeId }).then((r) => r.data);
+  },
+
   coldTransfer(callId: string, targetOperatorId: string) {
     return api.post(`/calls/${callId}/transfer/cold`, { targetOperatorId });
   },

@@ -27,7 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
     await centrifuge.connect();
 
     const presence = usePresenceStore();
-    await presence.setStatus('available');
+    await presence.setStatus('available').catch(() => {});
   }
 
   async function loadMe() {
