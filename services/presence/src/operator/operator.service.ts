@@ -42,6 +42,11 @@ export class OperatorService {
     // Atomic Redis ZSET update
     await this.redis.atomicStatusUpdate(user.sub, newStatus, opState.activeChats);
 
+    // Mark presence:user key so call-service isOnline() works
+    if (newStatus !== 'offline') {
+      await this.redis.setPresence(user.sub);
+    }
+
     // RabbitMQ event
     await this.rabbitmq.publish('operator.status.changed', {
       user_id: user.sub,
