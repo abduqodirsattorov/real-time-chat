@@ -20,7 +20,7 @@ export class CentrifugoService {
   }
 
   async publishToUser(userId: string, event: string, data: object): Promise<void> {
-    await this.publish(`user:${userId}`, { event, ...data });
+    await this.publish(`chat:user#${userId}`, { event, ...data });
   }
 
   async publishToRoom(roomId: string, event: string, data: object): Promise<void> {

@@ -5,6 +5,14 @@
       <div class="header-actions">
         <button
           v-if="room && room.status !== 'closed'"
+          class="icon-btn call-btn"
+          title="Qo'ng'iroq"
+          @click="startOutboundCall"
+        >
+          📞
+        </button>
+        <button
+          v-if="room && room.status !== 'closed'"
           class="close-btn"
           @click="closeRoom"
         >
@@ -14,6 +22,8 @@
     </div>
 
     <div ref="scrollEl" class="messages" @scroll="onScroll">
+      <div v-if="loadingOlder" class="load-more">{{ t('common.loading') }}</div>
+
       <div
         v-for="msg in roomMessages"
         :key="msg.id"
@@ -41,14 +51,19 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoomsStore } from '@/stores/rooms';
 import { useAuthStore } from '@/stores/auth';
+import { useCallsStore } from '@/stores/calls';
 import { chatApi } from '@/api/chat';
+import { callsApi } from '@/api/calls';
 import type { Message } from '@/api/chat';
 
 const props = defineProps<{ roomId: string }>();
 const { t, locale } = useI18n();
 const rooms = useRoomsStore();
 const auth = useAuthStore();
+const calls = useCallsStore();
 const scrollEl = ref<HTMLDivElement | null>(null);
+const loadingOlder = ref(false);
+const oldestCursor = ref<string | null>(null);
 
 const room = computed(() => rooms.rooms.find((r) => r.id === props.roomId));
 const roomMessages = computed(() => rooms.messages[props.roomId] ?? []);
@@ -62,7 +77,9 @@ const roomLabel = computed(() => {
 
 watch(
   () => roomMessages.value.length,
-  () => nextTick(scrollToBottom),
+  (newLen, oldLen) => {
+    if (newLen > (oldLen ?? 0)) nextTick(scrollToBottom);
+  },
 );
 
 onMounted(() => nextTick(scrollToBottom));
@@ -71,8 +88,39 @@ function scrollToBottom() {
   if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
 }
 
-function onScroll() {
-  // TODO: load older messages on scroll to top
+async function onScroll() {
+  if (!scrollEl.value || loadingOlder.value) return;
+  if (scrollEl.value.scrollTop < 60 && oldestCursor.value !== 'end') {
+    await loadOlderMessages();
+  }
+}
+
+async function loadOlderMessages() {
+  if (loadingOlder.value) return;
+  const msgs = rooms.messages[props.roomId];
+  if (!msgs?.length) return;
+
+  loadingOlder.value = true;
+  const prevScrollHeight = scrollEl.value?.scrollHeight ?? 0;
+  try {
+    const oldest = msgs[0];
+    const data = await chatApi.getMessages(props.roomId, {
+      cursor: btoa(oldest.createdAt),
+      limit: 30,
+    });
+    if (data.items.length === 0) {
+      oldestCursor.value = 'end';
+      return;
+    }
+    rooms.messages[props.roomId] = [...data.items, ...msgs];
+    // Maintain scroll position
+    await nextTick();
+    if (scrollEl.value) {
+      scrollEl.value.scrollTop = scrollEl.value.scrollHeight - prevScrollHeight;
+    }
+  } finally {
+    loadingOlder.value = false;
+  }
 }
 
 function isOwn(msg: Message) {
@@ -86,9 +134,7 @@ function getMessageClass(msg: Message) {
 
 function senderLabel(senderId: string) {
   if (senderId === auth.user?.id) return auth.user?.fullName ?? 'Siz';
-  const member = room.value?.members.find((m) => m.userId === senderId);
-  if (member) return `Mijoz #${senderId.slice(0, 6)}`;
-  return `#${senderId.slice(0, 6)}`;
+  return `Mijoz #${senderId.slice(0, 6)}`;
 }
 
 function parseSystemContent(content: string | null): string {
@@ -98,6 +144,16 @@ function parseSystemContent(content: string | null): string {
     return parsed[locale.value] ?? parsed.uz ?? parsed.ru ?? content;
   } catch {
     return content;
+  }
+}
+
+async function startOutboundCall() {
+  if (!room.value?.customerId) return;
+  try {
+    const callData = await callsApi.answer(room.value.id);
+    calls.setIncomingCall(callData as Parameters<typeof calls.setIncomingCall>[0]);
+  } catch {
+    alert('Qo\'ng\'iroqni boshlash imkoni yo\'q');
   }
 }
 
@@ -135,6 +191,23 @@ function formatTime(iso: string) {
   color: #1a1a1a;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.icon-btn {
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.icon-btn:hover { background: #f0f4f8; }
+
 .close-btn {
   padding: 6px 14px;
   background: #fff;
@@ -157,10 +230,14 @@ function formatTime(iso: string) {
   background: #f8f9fa;
 }
 
-.message {
-  display: flex;
+.load-more {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+  padding: 8px;
 }
 
+.message { display: flex; }
 .message.own { justify-content: flex-end; }
 .message.system { justify-content: center; }
 
