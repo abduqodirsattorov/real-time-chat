@@ -42,9 +42,27 @@ onMounted(async () => {
   // Subscribe personal channel for incoming call events
   if (auth.user) {
     await centrifuge.subscribe(`chat:user#${auth.user.id}`, (raw) => {
-      const payload = raw as { event: string; call?: Parameters<typeof calls.setIncomingCall>[0] };
-      if (payload.event === 'call.incoming' && payload.call) {
-        calls.setIncomingCall(payload.call);
+      const payload = raw as {
+        event: string;
+        callId?: string;
+        callerId?: string;
+        livekitRoom?: string;
+        ts?: string;
+        call?: Parameters<typeof calls.setIncomingCall>[0];
+      };
+      if (payload.event === 'call.incoming') {
+        // call-service publishes { event, callId, callerId, livekitRoom, ts }
+        const callObj = payload.call ?? {
+          id: payload.callId!,
+          callerId: payload.callerId ?? '',
+          calleeId: auth.user!.id,
+          status: 'ringing',
+          direction: 'inbound',
+          livekitRoom: payload.livekitRoom ?? '',
+          startedAt: null,
+          endedAt: null,
+        };
+        calls.setIncomingCall(callObj as Parameters<typeof calls.setIncomingCall>[0]);
       }
     });
   }

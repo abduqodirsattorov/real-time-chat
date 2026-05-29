@@ -27,7 +27,11 @@ export interface Recording {
 
 export const callsApi = {
   answer(callId: string) {
-    return api.post<Call>(`/calls/${callId}/answer`).then((r) => r.data);
+    return api.post(`/calls/${callId}/answer`).then((r) => {
+      const d = r.data as Record<string, unknown>;
+      // Backend returns { callId, livekitRoom, ... } — normalize to { id, ... }
+      return { ...d, id: d.id ?? d.callId } as unknown as Call;
+    });
   },
 
   hangup(callId: string) {
@@ -53,7 +57,12 @@ export const callsApi = {
   },
 
   outbound(calleeId: string) {
-    return api.post<Call>('/calls/outbound', { calleeId }).then((r) => r.data);
+    return api.post('/calls/outbound', { calleeId }).then((r) => {
+      const d = r.data as { call: Record<string, unknown> } | Record<string, unknown>;
+      // Backend returns { call: {...}, status, livekitRoom } — extract inner call
+      const callData = ('call' in d && d.call) ? d.call : d;
+      return { ...callData, id: callData.id ?? callData.callId } as unknown as Call;
+    });
   },
 
   coldTransfer(callId: string, targetOperatorId: string) {

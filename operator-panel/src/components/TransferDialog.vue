@@ -13,7 +13,7 @@
             @click="selectedId = op.id"
           >
             <span class="op-name">{{ op.fullName }}</span>
-            <span :class="['op-status', op.status]">{{ t(`presence.${op.status}`) }}</span>
+            <span :class="['op-status', op.status]">{{ statusLabel(op.status) }}</span>
           </div>
           <div v-if="targets.length === 0" class="empty">{{ t('common.error') }}</div>
         </div>
@@ -44,7 +44,12 @@ import { callsApi } from '@/api/calls';
 import type { TransferTarget } from '@/api/presence';
 
 const emit = defineEmits<{ close: [] }>();
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+function statusLabel(status: string): string {
+  const key = `presence.${status}`;
+  return te(key) ? t(key) : status;
+}
 const presence = usePresenceStore();
 const calls = useCallsStore();
 
