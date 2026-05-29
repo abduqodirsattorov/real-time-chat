@@ -36,6 +36,18 @@
           <p v-if="msg.type === 'system'" class="text system-text">
             {{ parseSystemContent(msg.content) }}
           </p>
+          <template v-else-if="msg.type === 'image'">
+            <MediaImage :attachment-id="msg.content!" />
+          </template>
+          <template v-else-if="msg.type === 'video'">
+            <MediaVideo :attachment-id="msg.content!" />
+          </template>
+          <template v-else-if="msg.type === 'audio'">
+            <MediaAudio :attachment-id="msg.content!" />
+          </template>
+          <template v-else-if="msg.type === 'file'">
+            <MediaFile :attachment-id="msg.content!" />
+          </template>
           <p v-else class="text">{{ msg.content }}</p>
           <span class="time">{{ formatTime(msg.createdAt) }}</span>
         </div>
@@ -48,6 +60,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import MediaImage from './media/MediaImage.vue';
+import MediaVideo from './media/MediaVideo.vue';
+import MediaAudio from './media/MediaAudio.vue';
+import MediaFile from './media/MediaFile.vue';
 import { useI18n } from 'vue-i18n';
 import { useRoomsStore } from '@/stores/rooms';
 import { useAuthStore } from '@/stores/auth';
