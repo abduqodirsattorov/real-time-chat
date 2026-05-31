@@ -6,6 +6,7 @@ import '../models/message.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../services/centrifuge_service.dart';
+import '../services/api_service.dart';
 import '../services/call_service.dart';
 import 'call_screen.dart';
 import 'login_screen.dart';
@@ -32,6 +33,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     final chat = context.read<ChatProvider>();
+    final userId = context.read<AuthProvider>().user?.id;
 
     await CentrifugeService().connect();
     final room = await chat.getOrCreateSupportRoom();
@@ -40,8 +42,85 @@ class _ChatScreenState extends State<ChatScreen> {
     await chat.loadMessages(room.id);
     await CentrifugeService().subscribe('chat:room#${room.id}', _onRoomEvent);
 
+    // Listen for operator-initiated (outbound) incoming calls
+    if (userId != null) {
+      await CentrifugeService().subscribe('chat:user#$userId', _onUserEvent);
+    }
+
     if (mounted) setState(() => _initialized = true);
     if (mounted) _scrollToBottom();
+  }
+
+  void _onUserEvent(centrifuge.PublicationEvent event) {
+    if (!mounted) return;
+    final data = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
+    if (data['event'] == 'call.incoming' && _callId == null) {
+      final callId = data['callId'] as String?;
+      if (callId != null) _showIncomingCallDialog(callId);
+    }
+  }
+
+  void _showIncomingCallDialog(String callId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.call, color: Color(0xFF1e3a5f)),
+            SizedBox(width: 8),
+            Text("Kiruvchi qo'ng'iroq"),
+          ],
+        ),
+        content: const Text('Operator siz bilan bog\'lanmoqda...'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _rejectIncomingCall(callId);
+            },
+            child: const Text('Rad etish', style: TextStyle(color: Colors.red)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF48bb78)),
+            icon: const Icon(Icons.call, color: Colors.white, size: 18),
+            label: const Text('Qabul qilish', style: TextStyle(color: Colors.white)),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _acceptIncomingCall(callId);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _acceptIncomingCall(String callId) async {
+    _callId = callId;
+    try {
+      await CentrifugeService().subscribe('call:$callId', _onCallEvent);
+      final active = await CallService().answerIncomingCall(callId);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => CallScreen(call: active)),
+      );
+      CentrifugeService().unsubscribe('call:$callId');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Qo'ng'iroqni qabul qilishda xato: $e")),
+        );
+      }
+    } finally {
+      _callId = null;
+    }
+  }
+
+  Future<void> _rejectIncomingCall(String callId) async {
+    try {
+      await ApiService().post('/calls/$callId/hangup');
+    } catch (_) {}
   }
 
   void _onCallEvent(centrifuge.PublicationEvent event) {

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { Room as LiveKitRoom, RoomEvent, Track, RemoteParticipant } from 'livekit-client';
 import { callsApi, type Call, type Recording } from '@/api/calls';
+import { useCentrifugeStore } from '@/stores/centrifuge';
 
 export const useCallsStore = defineStore('calls', () => {
   const incomingCall = ref<Call | null>(null);
@@ -11,6 +12,26 @@ export const useCallsStore = defineStore('calls', () => {
   const isOnHold = ref(false);
   const isMuted = ref(false);
   const remoteAudioTrack = ref<MediaStreamTrack | null>(null);
+
+  async function subscribeToCallChannel(callId: string) {
+    const centrifuge = useCentrifugeStore();
+    await centrifuge.subscribe(`call:${callId}`, (raw: unknown) => {
+      const data = raw as { event?: string; callerToken?: string; livekitUrl?: string };
+      if (data.event === 'call.ended') {
+        activeCall.value = null;
+        activeRecording.value = null;
+        isOnHold.value = false;
+        isMuted.value = false;
+        disconnectLiveKit();
+        centrifuge.unsubscribe(`call:${callId}`);
+      } else if (data.event === 'call.connected' && data.callerToken && data.livekitUrl) {
+        // Outbound: we are the caller — connect LiveKit with callerToken
+        if (activeCall.value && !livekitRoom.value) {
+          connectLiveKit(data.livekitUrl, activeCall.value.livekitRoom!, data.callerToken);
+        }
+      }
+    });
+  }
 
   async function answerCall(callId: string) {
     const call = await callsApi.answer(callId);
@@ -27,6 +48,8 @@ export const useCallsStore = defineStore('calls', () => {
       }
       if (url) await connectLiveKit(url, call.livekitRoom, call.operatorToken);
     }
+
+    await subscribeToCallChannel(callId);
   }
 
   async function connectLiveKit(url: string, roomName: string, token: string) {
@@ -109,14 +132,9 @@ export const useCallsStore = defineStore('calls', () => {
     incomingCall.value = null;
     isOnHold.value = false;
     isMuted.value = false;
-    if (call.livekitRoom && call.operatorToken) {
-      let url = call.livekitUrl;
-      if (!url) {
-        const td = await callsApi.getLivekitToken(call.id);
-        url = td.url;
-      }
-      if (url) await connectLiveKit(url, call.livekitRoom, call.operatorToken);
-    }
+    // Outbound: no token yet — wait for call.connected event on call channel
+    // (callerToken arrives when callee answers)
+    await subscribeToCallChannel(call.id);
   }
 
   function setIncomingCall(call: Call) {

@@ -16,6 +16,9 @@ class ActiveCall {
     required this.callId,
     required this.livekitRoom,
     this.state = CallState.ringing,
+    this.livekitUrl,
+    this.token,
+    this.connectedAt,
   });
 }
 
@@ -44,8 +47,10 @@ class CallService {
     return _activeCall!;
   }
 
+  // Called when operator accepts inbound call (Centrifugo call.connected event)
   Future<void> onCallConnected(String livekitUrl, String token) async {
     if (_activeCall == null) return;
+    if (_activeCall!.state == CallState.connected) return; // already connected via answerIncomingCall
     _activeCall!.livekitUrl = livekitUrl;
     _activeCall!.token = token;
     _activeCall!.state = CallState.connected;
@@ -57,6 +62,31 @@ class CallService {
     await _room!.connect(livekitUrl, token);
     await _room!.localParticipant?.setMicrophoneEnabled(true);
     _notify();
+  }
+
+  // Called when Flutter customer answers an operator-initiated (outbound) call
+  Future<ActiveCall> answerIncomingCall(String callId) async {
+    final res = await ApiService().post('/calls/$callId/answer');
+    final livekitUrl = res['livekitUrl'] as String;
+    final token = res['operatorToken'] as String;
+    final livekitRoom = res['livekitRoom'] as String;
+
+    _activeCall = ActiveCall(
+      callId: callId,
+      livekitRoom: livekitRoom,
+      state: CallState.connected,
+      livekitUrl: livekitUrl,
+      token: token,
+      connectedAt: DateTime.now(),
+    );
+
+    _room = Room(
+      roomOptions: const RoomOptions(defaultAudioPublishOptions: AudioPublishOptions()),
+    );
+    await _room!.connect(livekitUrl, token);
+    await _room!.localParticipant?.setMicrophoneEnabled(true);
+    _notify();
+    return _activeCall!;
   }
 
   Future<void> hangup() async {

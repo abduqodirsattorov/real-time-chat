@@ -22,6 +22,7 @@ class _CallScreenState extends State<CallScreen> {
     super.initState();
     _call = widget.call;
     _sub = CallService().onStateChange.listen(_onCallState);
+    if (_call.state == CallState.connected) _startTimer();
   }
 
   void _onCallState(ActiveCall call) {
