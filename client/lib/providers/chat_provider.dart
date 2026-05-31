@@ -102,6 +102,12 @@ class ChatProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> markRead(String messageId) async {
+    try {
+      await ApiService().post('/messages/$messageId/read');
+    } catch (_) {}
+  }
+
   void clear() {
     _activeRoom = null;
     _messages = [];

@@ -1,0 +1,22 @@
+{
+  "name": "nova-chat-integration-tests",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "jest --testTimeout=30000",
+    "test:auth": "jest auth.test.ts --testTimeout=30000",
+    "test:chat": "jest chat.test.ts --testTimeout=30000",
+    "test:call": "jest call.test.ts --testTimeout=30000"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.0.0",
+    "axios": "^1.7.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/*.test.ts"]
+  }
+}

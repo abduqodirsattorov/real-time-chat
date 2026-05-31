@@ -6,6 +6,9 @@
         <StatusSelector />
       </div>
       <div class="sidebar-bottom">
+        <button class="search-trigger-btn" @click="showSearch = !showSearch" title="Xabar qidirish">
+          🔍 Qidirish
+        </button>
         <button class="logout-btn" @click="handleLogout">{{ t('common.logout') }}</button>
       </div>
     </aside>
@@ -16,11 +19,13 @@
 
     <IncomingCallModal v-if="calls.incomingCall" />
     <InCallPanel v-if="calls.activeCall" />
+    <SearchPanel v-if="showSearch" @close="showSearch = false" />
+    <CallQueuePanel />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
@@ -29,6 +34,10 @@ import { useCentrifugeStore } from '@/stores/centrifuge';
 import StatusSelector from '@/components/StatusSelector.vue';
 import IncomingCallModal from '@/components/IncomingCallModal.vue';
 import InCallPanel from '@/components/InCallPanel.vue';
+import SearchPanel from '@/components/SearchPanel.vue';
+import CallQueuePanel from '@/components/CallQueuePanel.vue';
+
+const showSearch = ref(false);
 
 const { t } = useI18n();
 const router = useRouter();
@@ -112,6 +121,21 @@ async function handleLogout() {
   margin-top: auto;
   padding: 16px;
 }
+
+.search-trigger-btn {
+  width: 100%;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-bottom: 8px;
+  text-align: left;
+  transition: background 0.2s;
+}
+.search-trigger-btn:hover { background: rgba(255,255,255,0.15); }
 
 .logout-btn {
   width: 100%;
