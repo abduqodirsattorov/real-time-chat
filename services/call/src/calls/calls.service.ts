@@ -193,11 +193,11 @@ export class CallsService {
     await this.livekit.createRoom(roomName);
 
     const online = await this.redis.isOnline(dto.calleeId);
-    if (online) {
-      await this.centrifugo.publishToUser(dto.calleeId, 'call.incoming', {
-        callId: call.id, callerId: user.sub, livekitRoom: roomName, ts: new Date().toISOString(),
-      });
-    }
+    // Always publish via Centrifugo — subscriber receives it if connected,
+    // even if Redis presence is stale (e.g. web client without push proxy).
+    await this.centrifugo.publishToUser(dto.calleeId, 'call.incoming', {
+      callId: call.id, callerId: user.sub, livekitRoom: roomName, ts: new Date().toISOString(),
+    });
 
     await this.rabbitmq.publish('call.initiated', {
       call_id: call.id, caller_id: user.sub, callee_id: dto.calleeId,
