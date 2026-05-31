@@ -8,6 +8,7 @@ import '../providers/chat_provider.dart';
 import '../services/centrifuge_service.dart';
 import '../services/api_service.dart';
 import '../services/call_service.dart';
+import '../services/notification_service.dart';
 import 'call_screen.dart';
 import 'login_screen.dart';
 
@@ -36,16 +37,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final userId = context.read<AuthProvider>().user?.id;
 
     await CentrifugeService().connect();
+
+    // Subscribe to personal channel FIRST — receives outbound calls from operator
+    if (userId != null) {
+      await CentrifugeService().subscribe('chat:user#$userId', _onUserEvent);
+    }
+
     final room = await chat.getOrCreateSupportRoom();
     if (room == null) return;
 
     await chat.loadMessages(room.id);
     await CentrifugeService().subscribe('chat:room#${room.id}', _onRoomEvent);
-
-    // Listen for operator-initiated (outbound) incoming calls
-    if (userId != null) {
-      await CentrifugeService().subscribe('chat:user#$userId', _onUserEvent);
-    }
 
     if (mounted) setState(() => _initialized = true);
     if (mounted) _scrollToBottom();
@@ -56,7 +58,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final data = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
     if (data['event'] == 'call.incoming' && _callId == null) {
       final callId = data['callId'] as String?;
-      if (callId != null) _showIncomingCallDialog(callId);
+      if (callId != null) {
+        NotificationService().notifyIncomingCall();
+        _showIncomingCallDialog(callId);
+      }
     }
   }
 
@@ -165,8 +170,14 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     final data = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
     if (data['event'] == 'message.created' && data['message'] != null) {
-      context.read<ChatProvider>().addMessage(Message.fromJson(data['message']));
+      final msg = data['message'] as Map<String, dynamic>;
+      context.read<ChatProvider>().addMessage(Message.fromJson(msg));
       _scrollToBottom();
+      // Notify if window not focused
+      final content = msg['content'] as String? ?? '';
+      if (content.isNotEmpty) {
+        NotificationService().notifyMessage('Operator: $content');
+      }
     }
   }
 

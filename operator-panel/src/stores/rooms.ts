@@ -73,6 +73,10 @@ export const useRoomsStore = defineStore('rooms', () => {
             unreadCounts.value[roomId] = (unreadCounts.value[roomId] ?? 0) + 1;
             updateTabTitle();
             playNotificationSound();
+            showBrowserNotification(
+              'Nova Chat — Yangi xabar',
+              msg.content ?? 'Yangi xabar keldi',
+            );
           }
         }
       }
@@ -113,6 +117,18 @@ export const useRoomsStore = defineStore('rooms', () => {
   function updateTabTitle() {
     const total = Object.values(unreadCounts.value).reduce((s, n) => s + n, 0);
     document.title = total > 0 ? `(${total}) Nova Chat — Operator` : 'Nova Chat — Operator';
+  }
+
+  // Request browser notification permission once
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+
+  function showBrowserNotification(title: string, body: string) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    try {
+      new Notification(title, { body, icon: '/favicon.ico' });
+    } catch { /* silent */ }
   }
 
   let audioCtx: AudioContext | null = null;

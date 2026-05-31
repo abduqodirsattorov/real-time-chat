@@ -51,6 +51,10 @@ onMounted(async () => {
         call?: Parameters<typeof calls.setIncomingCall>[0];
       };
       if (payload.event === 'call.incoming') {
+        // Browser notification for incoming call
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try { new Notification("Nova Chat — Kiruvchi qo'ng'iroq", { body: 'Mijozdan qo\'ng\'iroq keldi', icon: '/favicon.ico' }); } catch { /* */ }
+        }
         // call-service publishes { event, callId, callerId, livekitRoom, ts }
         const callObj = payload.call ?? {
           id: payload.callId!,
