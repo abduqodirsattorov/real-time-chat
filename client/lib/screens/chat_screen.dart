@@ -32,7 +32,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     final chat = context.read<ChatProvider>();
-    final userId = context.read<AuthProvider>().user?.id;
 
     await CentrifugeService().connect();
     final room = await chat.getOrCreateSupportRoom();
@@ -40,9 +39,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     await chat.loadMessages(room.id);
     await CentrifugeService().subscribe('chat:room#${room.id}', _onRoomEvent);
-    if (userId != null) {
-      await CentrifugeService().subscribe('call:user#$userId', _onCallEvent);
-    }
 
     if (mounted) setState(() => _initialized = true);
     if (mounted) _scrollToBottom();
@@ -70,10 +66,13 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final active = await CallService().initiateCall();
       _callId = active.callId;
+      // Subscribe to this specific call's channel to receive call.connected / call.ended
+      await CentrifugeService().subscribe('call:${active.callId}', _onCallEvent);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => CallScreen(call: active)),
       );
+      CentrifugeService().unsubscribe('call:${active.callId}');
       _callId = null;
     } catch (e) {
       if (!mounted) return;
