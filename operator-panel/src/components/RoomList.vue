@@ -1,50 +1,70 @@
 <template>
   <div class="room-list">
-    <div class="room-list-header">
-      <div class="header-top">
-        <span class="header-title">Suhbatlar</span>
-        <span v-if="rooms.totalUnread > 0" class="total-badge">{{ rooms.totalUnread }}</span>
+    <!-- Header -->
+    <div class="rl-header">
+      <div class="rl-title-row">
+        <h2 class="rl-title">Inbox</h2>
+        <span v-if="rooms.totalUnread > 0" class="rl-total-badge">{{ rooms.totalUnread }}</span>
+        <button class="rl-filter-btn" title="Filter">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+          </svg>
+        </button>
       </div>
-      <input
-        v-model="search"
-        type="text"
-        :placeholder="t('chat.searchRooms')"
-        class="search-input"
-      />
+      <div class="rl-search-wrap">
+        <svg class="rl-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          v-model="search"
+          type="text"
+          :placeholder="t('chat.searchRooms')"
+          class="rl-search"
+        />
+      </div>
     </div>
 
-    <div class="rooms">
+    <!-- Room list -->
+    <div class="rl-rooms">
       <div
         v-for="room in filteredRooms"
         :key="room.id"
-        :class="['room-item', { active: rooms.activeRoomId === room.id, unread: unreadCount(room.id) > 0 }]"
+        :class="['room-item', { active: rooms.activeRoomId === room.id }]"
         @click="selectRoom(room.id)"
       >
-        <div class="room-avatar">{{ initials(roomLabel(room)) }}</div>
+        <!-- Avatar -->
+        <div class="room-av" :style="avatarStyle(room)">
+          {{ initials(roomLabel(room)) }}
+        </div>
 
+        <!-- Info -->
         <div class="room-info">
-          <div class="room-name-row">
-            <span :class="['room-name', { bold: unreadCount(room.id) > 0 }]">
+          <div class="room-row1">
+            <span class="room-name" :class="{ bold: unreadCount(room.id) > 0 }">
               {{ roomLabel(room) }}
             </span>
-            <span class="room-time">{{ formatTime(room.lastMessageAt ?? room.createdAt) }}</span>
+            <div class="room-meta-right">
+              <span v-if="unreadCount(room.id) === 0" class="room-check">✓✓</span>
+              <span class="room-time">{{ formatTime(room.lastMessageAt ?? room.createdAt) }}</span>
+            </div>
           </div>
-          <div class="room-bottom-row">
+          <div class="room-row2">
             <span class="room-preview">
-              <span v-if="rooms.typingRooms.has(room.id)" class="typing">
+              <span v-if="rooms.typingRooms.has(room.id)" class="typing-text">
                 {{ t('chat.typing') }}
               </span>
               <span v-else>{{ lastPreview(room.id, room.status) }}</span>
             </span>
-            <span :class="['status-badge', room.status]">{{ room.status }}</span>
-            <span v-if="unreadCount(room.id) > 0" class="unread-badge">
-              {{ unreadCount(room.id) > 99 ? '99+' : unreadCount(room.id) }}
-            </span>
+            <div class="room-right-badges">
+              <span v-if="unreadCount(room.id) > 0" class="unread-badge">
+                {{ unreadCount(room.id) > 99 ? '99+' : unreadCount(room.id) }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div v-if="filteredRooms.length === 0" class="empty">
+      <div v-if="filteredRooms.length === 0" class="rl-empty">
         {{ t('chat.noRooms') }}
       </div>
     </div>
@@ -63,10 +83,20 @@ const router = useRouter();
 const rooms = useRoomsStore();
 const search = ref('');
 
+const AVATAR_COLORS = [
+  '#D1E8FF', '#D4F7E8', '#EDE8FF', '#FFE8D6',
+  '#FFE8F0', '#E8F7FF', '#FFF3D6', '#E8FFE8',
+];
+
 function roomLabel(room: Room): string {
   if (room.title) return room.title;
   if (room.customerId) return `Mijoz #${room.customerId.slice(0, 6)}`;
   return `Room ${room.id.slice(0, 6)}`;
+}
+
+function avatarStyle(room: Room) {
+  const idx = room.id.charCodeAt(0) % AVATAR_COLORS.length;
+  return { background: AVATAR_COLORS[idx] };
 }
 
 function unreadCount(roomId: string): number {
@@ -96,6 +126,7 @@ function initials(label: string) {
 }
 
 function formatTime(iso: string) {
+  if (!iso) return '';
   const d = new Date(iso);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) {
@@ -107,91 +138,118 @@ function formatTime(iso: string) {
 
 <style scoped>
 .room-list {
-  width: 290px;
-  border-right: 1px solid #e2e8f0;
-  display: flex;
-  flex-direction: column;
-  background: #fafafa;
+  width: var(--inbox-w);
   flex-shrink: 0;
-}
-
-.room-list-header {
-  padding: 12px;
-  border-bottom: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  border-right: 1px solid var(--c-border);
+  background: var(--c-bg);
+  overflow: hidden;
 }
 
-.header-top {
+/* Header */
+.rl-header {
+  padding: 18px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.rl-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.header-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.rl-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c-text);
+  flex: 1;
 }
 
-.total-badge {
-  background: #e53e3e;
+.rl-total-badge {
+  background: var(--c-red);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
   padding: 2px 7px;
-  border-radius: 10px;
-  min-width: 20px;
-  text-align: center;
+  border-radius: var(--r-full);
 }
 
-.search-input {
+.rl-filter-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-2);
+  transition: background 0.12s, color 0.12s;
+}
+
+.rl-filter-btn:hover { background: var(--c-surface); color: var(--c-text); }
+
+/* Search */
+.rl-search-wrap {
+  position: relative;
+}
+
+.rl-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--c-text-3);
+  pointer-events: none;
+}
+
+.rl-search {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 9px 12px 9px 36px;
+  background: var(--c-surface);
+  border: 1.5px solid transparent;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--c-text);
   outline: none;
-  background: #fff;
+  transition: border-color 0.15s;
 }
 
-.rooms {
+.rl-search:focus { border-color: var(--c-accent); background: #fff; }
+.rl-search::placeholder { color: var(--c-text-3); }
+
+/* Rooms */
+.rl-rooms {
   flex: 1;
   overflow-y: auto;
+  padding: 6px 0;
 }
 
 .room-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 10px 16px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
-  transition: background 0.15s;
+  border-radius: 0;
+  transition: background 0.12s;
+  position: relative;
 }
 
-.room-item:hover { background: #f0f4f8; }
-.room-item.active { background: #e8f0fe; }
-.room-item.unread { background: #fffbf0; }
-.room-item.unread:hover { background: #fef3c7; }
+.room-item:hover { background: var(--c-surface); }
+.room-item.active { background: var(--c-accent-bg); }
 
-.room-avatar {
-  width: 42px;
-  height: 42px;
+/* Avatar */
+.room-av {
+  width: 44px; height: 44px;
   border-radius: 50%;
-  background: #2d6a9f;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #444;
   flex-shrink: 0;
 }
 
+/* Info */
 .room-info {
   flex: 1;
   min-width: 0;
@@ -200,88 +258,76 @@ function formatTime(iso: string) {
   gap: 3px;
 }
 
-.room-name-row {
+.room-row1 {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: baseline;
+  gap: 4px;
 }
 
 .room-name {
   font-size: 14px;
-  color: #1a1a1a;
+  color: var(--c-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  flex: 1;
 }
 
 .room-name.bold { font-weight: 700; }
 
-.room-time {
-  font-size: 11px;
-  color: #999;
-  flex-shrink: 0;
-  margin-left: 4px;
-}
-
-.room-bottom-row {
+.room-meta-right {
   display: flex;
   align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.room-check { font-size: 11px; color: var(--c-accent); }
+
+.room-time {
+  font-size: 11px;
+  color: var(--c-text-3);
+}
+
+.room-row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 6px;
 }
 
 .room-preview {
   font-size: 12px;
-  color: #888;
-  flex: 1;
+  color: var(--c-text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  flex: 1;
 }
 
-.typing {
-  color: #2d6a9f;
-  font-style: italic;
-}
+.typing-text { color: var(--c-accent); font-style: italic; }
 
-.status-badge {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 8px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.status-badge.active    { background: #c6f6d5; color: #276749; }
-.status-badge.pending   { background: #fefcbf; color: #744210; }
-.status-badge.closed    { background: #e2e8f0; color: #4a5568; }
-.status-badge.archived  { background: #e2e8f0; color: #4a5568; }
-.status-badge.bot_handling { background: #bee3f8; color: #2b6cb0; }
-.status-badge.open      { background: #c6f6d5; color: #276749; }
+.room-right-badges { flex-shrink: 0; }
 
 .unread-badge {
-  background: #e53e3e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-accent);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--r-full);
   min-width: 20px;
-  text-align: center;
-  flex-shrink: 0;
-  animation: pulse 1.5s ease infinite;
+  height: 20px;
+  padding: 0 6px;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.empty {
+.rl-empty {
   padding: 40px 20px;
   text-align: center;
-  color: #999;
-  font-size: 14px;
+  color: var(--c-text-3);
+  font-size: 13px;
 }
 </style>

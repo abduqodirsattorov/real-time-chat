@@ -10,7 +10,9 @@
     "verify": "Tasdiqlash",
     "back": "Orqaga",
     "sending": "Yuborilmoqda...",
-    "verifying": "Tekshirilmoqda..."
+    "verifying": "Tekshirilmoqda...",
+    "enterCode": "Kodni kiriting",
+    "codeSent": "{phone} raqamiga kod yuborildi"
   },
   "chat": {
     "noRoom": "Suhbatni tanlang",

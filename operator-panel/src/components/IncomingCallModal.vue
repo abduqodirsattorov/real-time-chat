@@ -1,23 +1,50 @@
 <template>
-  <div class="modal-overlay">
-    <div class="modal">
-      <div class="call-icon">📞</div>
-      <h2>{{ t('call.incoming') }}</h2>
-      <p class="caller">{{ calls.incomingCall?.callerId }}</p>
-      <div class="actions">
-        <button class="answer-btn" @click="answer">{{ t('call.answer') }}</button>
-        <button class="reject-btn" @click="calls.dismissIncoming()">{{ t('call.reject') }}</button>
+  <!-- Shown inline in the room list panel (top item) -->
+  <div class="incoming-call-item">
+    <div class="ic-info">
+      <div class="ic-avatar">
+        {{ callerInitials }}
       </div>
+      <div class="ic-text">
+        <div class="ic-name">{{ callerLabel }}</div>
+        <div class="ic-status">Is calling...</div>
+      </div>
+      <button class="ic-info-btn" title="Info">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      </button>
+    </div>
+
+    <div class="ic-actions">
+      <button class="ic-answer" @click="answer" :title="t('call.answer')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+        </svg>
+      </button>
+      <button class="ic-reject" @click="calls.dismissIncoming()" :title="t('call.reject')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+        </svg>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useCallsStore } from '@/stores/calls';
 
 const { t } = useI18n();
 const calls = useCallsStore();
+
+const callerLabel = computed(() => {
+  const id = calls.incomingCall?.callerId ?? '';
+  return id ? `Mijoz #${id.slice(0, 6)}` : 'Noma\'lum';
+});
+
+const callerInitials = computed(() => {
+  return callerLabel.value.slice(0, 2).toUpperCase();
+});
 
 async function answer() {
   if (!calls.incomingCall) return;
@@ -26,73 +53,83 @@ async function answer() {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+.incoming-call-item {
+  margin: 8px 10px;
+  background: var(--c-accent-bg);
+  border: 1.5px solid rgba(91,155,245,0.25);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+  animation: ring-pulse 1.2s ease infinite alternate;
+}
+
+@keyframes ring-pulse {
+  from { border-color: rgba(91,155,245,0.2); }
+  to   { border-color: rgba(91,155,245,0.6); }
+}
+
+.ic-info {
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 1000;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.modal {
-  background: #fff;
-  border-radius: 20px;
-  padding: 40px 48px;
-  text-align: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: ring 0.6s ease infinite alternate;
+.ic-avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: #D1E8FF;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #3B7DD8;
+  flex-shrink: 0;
 }
 
-@keyframes ring {
-  from { transform: scale(1); }
-  to { transform: scale(1.02); }
+.ic-text { flex: 1; }
+
+.ic-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
 }
 
-.call-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
+.ic-status {
+  font-size: 12px;
+  color: var(--c-text-2);
 }
 
-h2 {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: #1a1a1a;
+.ic-info-btn {
+  width: 28px; height: 28px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-bg);
+  color: var(--c-text-2);
+  display: flex; align-items: center; justify-content: center;
 }
 
-.caller {
-  color: #666;
-  margin-bottom: 28px;
-  font-size: 15px;
-}
-
-.actions {
+.ic-actions {
   display: flex;
-  gap: 12px;
-  justify-content: center;
+  gap: 8px;
 }
 
-.answer-btn {
-  padding: 12px 28px;
-  background: #48bb78;
-  color: #fff;
+.ic-answer, .ic-reject {
+  flex: 1;
+  height: 40px;
   border: none;
-  border-radius: 40px;
-  font-size: 16px;
+  border-radius: var(--r-xl);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
+  color: #fff;
+  transition: opacity 0.15s;
 }
 
-.reject-btn {
-  padding: 12px 28px;
-  background: #f56565;
-  color: #fff;
-  border: none;
-  border-radius: 40px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
+.ic-answer {
+  background: var(--c-green);
 }
+
+.ic-reject {
+  background: var(--c-red);
+  transform: rotate(135deg);
+}
+
+.ic-answer:hover, .ic-reject:hover { opacity: 0.85; }
 </style>

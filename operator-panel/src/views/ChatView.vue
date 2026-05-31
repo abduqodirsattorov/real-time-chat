@@ -6,8 +6,12 @@
         <MessageList :room-id="rooms.activeRoomId" />
         <MessageInput :room-id="rooms.activeRoomId" />
       </template>
+      <!-- Empty state -->
       <div v-else class="no-room">
-        <p>{{ t('chat.noRoom') }}</p>
+        <div class="empty-state">
+          <div class="empty-icon">📫</div>
+          <p class="empty-label">Select a chat to start messaging</p>
+        </div>
       </div>
     </div>
   </div>
@@ -54,7 +58,27 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #999;
-  font-size: 16px;
+  background: var(--c-bg);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.empty-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--c-text-2);
+  background: var(--c-accent-bg);
+  padding: 8px 20px;
+  border-radius: var(--r-full);
 }
 </style>

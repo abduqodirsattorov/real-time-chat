@@ -24,6 +24,13 @@
       <button class="remove-btn" @click="clearFile">✕</button>
     </div>
 
+    <!-- Quick reply chips -->
+    <div v-if="!text && !selectedFile" class="chips-row">
+      <button v-for="chip in quickReplies" :key="chip" class="chip" @click="text = chip">
+        {{ chip }}
+      </button>
+    </div>
+
     <div class="input-row">
       <!-- File button -->
       <button class="attach-btn" title="Fayl yuborish" @click="fileInput?.click()">
@@ -49,8 +56,11 @@
       <button
         :disabled="(!text.trim() && !selectedFile) || sending || uploading"
         @click="send"
+        :title="t('chat.send')"
       >
-        {{ t('chat.send') }}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
       </button>
     </div>
 
@@ -66,6 +76,14 @@ import { mediaApi, validateFile, msgTypeFromMime, formatBytes, ALLOWED_TYPES } f
 import { chatApi } from '@/api/chat';
 
 const props = defineProps<{ roomId: string }>();
+
+const quickReplies = [
+  'Assalomu alaykum!',
+  'Muammongizni tez orada hal qilamiz',
+  'Rahmat, kuningiz xayrli o\'tsin!',
+  'Iltimos, biroz kuting...',
+];
+
 const { t } = useI18n();
 const rooms = useRoomsStore();
 
@@ -185,98 +203,94 @@ function onInput() {
 
 <style scoped>
 .message-input-wrapper {
-  border-top: 1px solid #e2e8f0;
-  background: #fff;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg);
   position: relative;
 }
 
+/* Drag overlay */
 .drag-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(45, 106, 159, 0.15);
-  border: 2px dashed #2d6a9f;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-weight: 600;
-  color: #2d6a9f;
-  z-index: 10;
-  border-radius: 4px;
+  position: absolute; inset: 0;
+  background: rgba(91,155,245,0.1);
+  border: 2px dashed var(--c-accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; color: var(--c-accent);
+  z-index: 10; border-radius: var(--r-sm);
 }
 
-.upload-bar {
-  padding: 8px 16px 0;
-}
+/* Upload progress */
+.upload-bar { padding: 8px 16px 0; }
 
 .upload-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 4px;
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--c-text-2); margin-bottom: 4px;
 }
 
 .progress-track {
-  height: 4px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  overflow: hidden;
+  height: 3px; background: var(--c-border); border-radius: var(--r-full); overflow: hidden;
 }
 
 .progress-fill {
-  height: 100%;
-  background: #2d6a9f;
-  transition: width 0.1s;
+  height: 100%; background: var(--c-accent); transition: width 0.1s;
 }
 
+/* File preview */
 .file-preview {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   padding: 8px 16px;
-  background: #f7fafc;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .preview-thumb {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 6px;
+  width: 44px; height: 44px;
+  object-fit: cover; border-radius: var(--r-sm); flex-shrink: 0;
+}
+
+.file-icon { font-size: 28px; }
+.file-preview-info { flex: 1; min-width: 0; }
+
+.file-name {
+  display: block; font-size: 13px; font-weight: 600;
+  color: var(--c-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.file-size { font-size: 11px; color: var(--c-text-2); }
+
+.remove-btn {
+  padding: 4px 8px; background: transparent; border: none;
+  color: var(--c-text-3); font-size: 16px;
+}
+
+.remove-btn:hover { color: var(--c-red); }
+
+/* Quick reply chips */
+.chips-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+.chip {
+  padding: 6px 14px;
+  background: var(--c-chip);
+  color: var(--c-chip-text);
+  border: none;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 0.15s;
   flex-shrink: 0;
 }
 
-.file-icon { font-size: 32px; }
+.chip:hover { opacity: 0.8; }
 
-.file-preview-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.file-name {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-size {
-  font-size: 11px;
-  color: #888;
-}
-
-.remove-btn {
-  padding: 4px 8px;
-  background: transparent;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 16px;
-}
-
+/* Input row */
 .input-row {
   display: flex;
   gap: 8px;
@@ -285,66 +299,56 @@ function onInput() {
 }
 
 .attach-btn {
-  padding: 8px;
+  width: 36px; height: 36px;
   background: transparent;
-  border: 1px solid #e2e8f0;
+  border: 1.5px solid var(--c-border);
   border-radius: 50%;
-  font-size: 18px;
-  cursor: pointer;
+  font-size: 16px;
+  color: var(--c-text-2);
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s;
-  line-height: 1;
+  transition: background 0.12s, border-color 0.12s;
 }
 
-.attach-btn:hover { background: #f0f4f8; }
+.attach-btn:hover { background: var(--c-surface); border-color: var(--c-accent); color: var(--c-accent); }
 
 textarea {
   flex: 1;
-  padding: 10px 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 20px;
+  padding: 9px 14px;
+  background: var(--c-surface);
+  border: 1.5px solid transparent;
+  border-radius: var(--r-xl);
   font-size: 14px;
+  color: var(--c-text);
   resize: none;
   outline: none;
-  font-family: inherit;
   line-height: 1.5;
   max-height: 120px;
   overflow-y: auto;
+  transition: border-color 0.15s;
 }
 
-textarea:focus { border-color: #2d6a9f; }
+textarea:focus { border-color: var(--c-accent); background: #fff; }
+textarea::placeholder { color: var(--c-text-3); }
 
-button[type=undefined]:not(.attach-btn):not(.remove-btn) {
-  padding: 10px 20px;
-  background: #2d6a9f;
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.2s;
-}
-
+/* Send button */
 .input-row > button:last-child {
-  padding: 10px 20px;
-  background: #2d6a9f;
+  width: 36px; height: 36px;
+  background: var(--gradient-btn);
   color: #fff;
   border: none;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(91,155,245,0.4);
+  transition: opacity 0.15s, transform 0.1s;
 }
 
-.input-row > button:last-child:hover:not(:disabled) { background: #1e3a5f; }
-.input-row > button:last-child:disabled { opacity: 0.5; cursor: not-allowed; }
+.input-row > button:last-child:hover:not(:disabled) { opacity: 0.9; transform: scale(1.05); }
+.input-row > button:last-child:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
 .upload-error {
-  font-size: 12px;
-  color: #e53e3e;
-  padding: 0 16px 8px;
+  font-size: 12px; color: var(--c-red);
+  padding: 0 16px 6px;
 }
 </style>
