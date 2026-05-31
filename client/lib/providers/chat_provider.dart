@@ -9,11 +9,24 @@ class ChatProvider extends ChangeNotifier {
   List<Message> _messages = [];
   bool _loadingMessages = false;
   String? _supportRoomId;
+  int _unreadCount = 0;
 
   Room? get activeRoom => _activeRoom;
   List<Message> get messages => _messages;
   bool get loadingMessages => _loadingMessages;
   String? get supportRoomId => _supportRoomId;
+  int get unreadCount => _unreadCount;
+
+  void incrementUnread() {
+    _unreadCount++;
+    notifyListeners();
+  }
+
+  void clearUnread() {
+    if (_unreadCount == 0) return;
+    _unreadCount = 0;
+    notifyListeners();
+  }
 
   void addMessage(Message msg) {
     if (!_messages.any((m) => m.id == msg.id)) {
@@ -73,10 +86,10 @@ class ChatProvider extends ChangeNotifier {
     _loadingMessages = false; notifyListeners();
   }
 
-  Future<Message?> sendMessage(String roomId, String content) async {
+  Future<Message?> sendMessage(String roomId, String content, {String type = 'text'}) async {
     try {
       final res = await ApiService().post('/rooms/$roomId/messages',
-          data: {'type': 'text', 'content': content});
+          data: {'type': type, 'content': content});
       final msg = Message.fromJson(res);
       addMessage(msg);
       return msg;
@@ -93,6 +106,7 @@ class ChatProvider extends ChangeNotifier {
     _activeRoom = null;
     _messages = [];
     _supportRoomId = null;
+    _unreadCount = 0;
     notifyListeners();
   }
 }
