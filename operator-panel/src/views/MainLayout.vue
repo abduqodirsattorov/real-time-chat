@@ -90,7 +90,8 @@
     </main>
 
     <!-- ── Overlays (call modals etc) ── -->
-    <IncomingCallModal v-if="calls.incomingCall" />
+    <!-- IncomingCallModal is rendered inside RoomList, not here -->
+    <!-- InCallPanel: only the bottom action bar -->
     <InCallPanel v-if="calls.activeCall" />
     <SearchPanel v-if="showSearch" @close="showSearch = false" />
     <CallQueuePanel />
