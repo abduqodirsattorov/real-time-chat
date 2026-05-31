@@ -6,6 +6,8 @@ import '../models/message.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../services/centrifuge_service.dart';
+import '../services/call_service.dart';
+import 'call_screen.dart';
 import 'login_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollCtrl = ScrollController();
   bool _initialized = false;
   bool _typing = false;
+  String? _callId;
 
   @override
   void initState() {
@@ -29,6 +32,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     final chat = context.read<ChatProvider>();
+    final userId = context.read<AuthProvider>().user?.id;
 
     await CentrifugeService().connect();
     final room = await chat.getOrCreateSupportRoom();
@@ -36,9 +40,47 @@ class _ChatScreenState extends State<ChatScreen> {
 
     await chat.loadMessages(room.id);
     await CentrifugeService().subscribe('chat:room#${room.id}', _onRoomEvent);
+    if (userId != null) {
+      await CentrifugeService().subscribe('call:user#$userId', _onCallEvent);
+    }
 
     if (mounted) setState(() => _initialized = true);
     if (mounted) _scrollToBottom();
+  }
+
+  void _onCallEvent(centrifuge.PublicationEvent event) {
+    if (!mounted) return;
+    final data = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
+    final ev = data['event'] as String?;
+
+    if (ev == 'call.connected') {
+      final livekitUrl = data['livekitUrl'] as String?;
+      final token = data['callerToken'] as String?;
+      if (livekitUrl != null && token != null) {
+        CallService().onCallConnected(livekitUrl, token);
+      }
+    } else if (ev == 'call.ended') {
+      CallService().onCallEnded();
+      _callId = null;
+    }
+  }
+
+  Future<void> _startCall() async {
+    if (_callId != null) return;
+    try {
+      final active = await CallService().initiateCall();
+      _callId = active.callId;
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => CallScreen(call: active)),
+      );
+      _callId = null;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Qo'ng'iroqni boshlashda xato: $e")),
+      );
+    }
   }
 
   void _onRoomEvent(centrifuge.PublicationEvent event) {
@@ -88,6 +130,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.call, color: Colors.white),
+            tooltip: "Qo'ng'iroq",
+            onPressed: _callId == null ? _startCall : null,
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _logout,

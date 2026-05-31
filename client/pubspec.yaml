@@ -23,6 +23,7 @@ dependencies:
   file_picker: ^8.1.7
   cached_network_image: ^3.4.1
   centrifuge: 0.17.0
+  livekit_client: ^2.3.0
 
 dev_dependencies:
   flutter_test:

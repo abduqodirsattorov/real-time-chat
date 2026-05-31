@@ -103,7 +103,12 @@ export class CallsService {
     });
 
     await this.centrifugo.publish(`call:${callId}`, {
-      event: 'call.connected', callId, operatorId: user.sub, ts: new Date().toISOString(),
+      event: 'call.connected',
+      callId,
+      operatorId: user.sub,
+      livekitUrl: this.livekit.wsUrl,
+      callerToken,
+      ts: new Date().toISOString(),
     });
 
     await this.rabbitmq.publish('call.connected', {
