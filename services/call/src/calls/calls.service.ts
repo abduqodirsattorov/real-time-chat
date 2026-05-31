@@ -102,6 +102,9 @@ export class CallsService {
       data: { status: 'connected', answeredAt: new Date() },
     });
 
+    const callerToken = await this.livekit.generateToken(call.callerId!, call.livekitRoom!);
+    const operatorToken = await this.livekit.generateToken(user.sub, call.livekitRoom!);
+
     await this.centrifugo.publish(`call:${callId}`, {
       event: 'call.connected',
       callId,
@@ -114,9 +117,6 @@ export class CallsService {
     await this.rabbitmq.publish('call.connected', {
       call_id: callId, operator_id: user.sub, caller_id: call.callerId, ts: Date.now(),
     });
-
-    const callerToken = await this.livekit.generateToken(call.callerId!, call.livekitRoom!);
-    const operatorToken = await this.livekit.generateToken(user.sub, call.livekitRoom!);
 
     this.logger.log({ event: 'call_answered', callId, operatorId: user.sub });
     return {
