@@ -64,6 +64,17 @@ export class CallsService {
 
       const callerToken = await this.livekit.generateToken(user.sub, roomName);
 
+      // Notify ALL online operators so queue panel updates immediately (no 8s poll wait)
+      const onlineOps = await this.prisma.operatorState.findMany({
+        where: { status: 'available' as any },
+        select: { userId: true },
+      });
+      await Promise.all(
+        onlineOps.map(op => this.centrifugo.publishToUser(op.userId, 'call.queued', {
+          callId: call.id, callerId: user.sub, ts: new Date().toISOString(),
+        })),
+      );
+
       await this.rabbitmq.publish('call.initiated', {
         call_id: call.id, caller_id: user.sub, direction: 'inbound',
         status: 'queued', livekit_room: roomName, ts: Date.now(),
@@ -76,6 +87,10 @@ export class CallsService {
     await this.prisma.call.update({
       where: { id: call.id },
       data: { calleeId: operator.userId, status: 'ringing', initiatedAt: new Date() },
+    });
+    await this.prisma.operatorState.updateMany({
+      where: { userId: operator.userId },
+      data: { onCall: true },
     });
 
     const callerToken = await this.livekit.generateToken(user.sub, roomName);
@@ -165,6 +180,15 @@ export class CallsService {
 
     await this.livekit.destroyRoom(call.livekitRoom!);
 
+    // Release onCall lock for both caller and callee
+    const releaseIds = [call.callerId, call.calleeId].filter(Boolean) as string[];
+    if (releaseIds.length > 0) {
+      await this.prisma.operatorState.updateMany({
+        where: { userId: { in: releaseIds } },
+        data: { onCall: false },
+      });
+    }
+
     await this.centrifugo.publish(`call:${callId}`, {
       event: 'call.ended', callId, status: finalStatus, hangupBy: user.sub, ts: now.toISOString(),
     });
@@ -185,6 +209,10 @@ export class CallsService {
   async outboundCall(user: JwtUser, dto: OutboundCallDto) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar qo\'ng\'iroq qila oladi');
 
+    // Prevent operator from making outbound call if already on a call
+    const opState = await this.prisma.operatorState.findUnique({ where: { userId: user.sub } });
+    if (opState?.onCall) throw new BadRequestException('Siz allaqachon qo\'ng\'iroqda');
+
     const callee = await this.prisma.user.findUnique({ where: { id: dto.calleeId } });
     if (!callee) throw new NotFoundException('Foydalanuvchi topilmadi');
 
@@ -202,6 +230,10 @@ export class CallsService {
     });
 
     await this.livekit.createRoom(roomName);
+    await this.prisma.operatorState.updateMany({
+      where: { userId: user.sub },
+      data: { onCall: true },
+    });
 
     const online = await this.redis.isOnline(dto.calleeId);
     // Always publish via Centrifugo — subscriber receives it if connected,
@@ -537,6 +569,7 @@ export class CallsService {
     const candidates = await this.prisma.operatorState.findMany({
       where: {
         status: 'available' as any,
+        onCall: false,
         languages: { has: locale as any },
         ...(requiredSkills.length > 0 ? { skills: { hasSome: requiredSkills } } : {}),
       },

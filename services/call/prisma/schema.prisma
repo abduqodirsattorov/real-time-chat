@@ -101,6 +101,7 @@ model OperatorState {
   status             OperatorStatus
   activeChats        Int            @default(0) @map("active_chats")
   maxConcurrentChats Int            @default(5) @map("max_concurrent_chats")
+  onCall             Boolean        @default(false) @map("on_call")
   languages          UserLocale[]
   skills             String[]
 

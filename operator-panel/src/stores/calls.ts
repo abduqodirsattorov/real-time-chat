@@ -14,22 +14,33 @@ export const useCallsStore = defineStore('calls', () => {
   const isMuted = ref(false);
   const remoteAudioTrack = ref<MediaStreamTrack | null>(null);
 
+  // ONE subscription per call handles ALL events (ringing + active).
+  // Called in setIncomingCall and startOutbound — NOT in answerCall.
   async function subscribeToCallChannel(callId: string) {
     const centrifuge = useCentrifugeStore();
     await centrifuge.subscribe(`call:${callId}`, (raw: unknown) => {
       const data = raw as { event?: string; callerToken?: string; livekitUrl?: string };
+
       if (data.event === 'call.ended') {
         stopRingtone();
-        activeCall.value = null;
-        activeRecording.value = null;
-        isOnHold.value = false;
-        isMuted.value = false;
-        disconnectLiveKit();
+        // Dismiss incoming card (customer hung up before operator answered)
+        if (incomingCall.value?.id === callId) {
+          incomingCall.value = null;
+        }
+        // End active call
+        if (activeCall.value?.id === callId) {
+          activeCall.value = null;
+          activeRecording.value = null;
+          isOnHold.value = false;
+          isMuted.value = false;
+          disconnectLiveKit();
+        }
         centrifuge.unsubscribe(`call:${callId}`);
+
       } else if (data.event === 'call.connected' && data.callerToken && data.livekitUrl) {
+        // Outbound: caller gets token when callee answers
         stopRingtone();
-        // Outbound: we are the caller — connect LiveKit with callerToken
-        if (activeCall.value && !livekitRoom.value) {
+        if (activeCall.value?.id === callId && !livekitRoom.value) {
           connectLiveKit(data.livekitUrl, activeCall.value.livekitRoom!, data.callerToken);
         }
       }
@@ -44,6 +55,7 @@ export const useCallsStore = defineStore('calls', () => {
     isOnHold.value = false;
     isMuted.value = false;
 
+    // Connect LiveKit with operator token from answer response
     if (call.livekitRoom && call.operatorToken) {
       let url = call.livekitUrl;
       if (!url) {
@@ -52,8 +64,7 @@ export const useCallsStore = defineStore('calls', () => {
       }
       if (url) await connectLiveKit(url, call.livekitRoom, call.operatorToken);
     }
-
-    await subscribeToCallChannel(callId);
+    // NOTE: No subscribeToCallChannel here — already subscribed in setIncomingCall
   }
 
   async function connectLiveKit(url: string, roomName: string, token: string) {
@@ -85,16 +96,17 @@ export const useCallsStore = defineStore('calls', () => {
     stopRingtone();
     if (!activeCall.value) return;
     const callId = activeCall.value.id;
-    // Clear state immediately so UI responds right away
     activeCall.value = null;
     activeRecording.value = null;
     isOnHold.value = false;
     isMuted.value = false;
     await disconnectLiveKit();
+    const centrifuge = useCentrifugeStore();
+    centrifuge.unsubscribe(`call:${callId}`);
     try {
       await callsApi.hangup(callId);
     } catch (e) {
-      console.error('[calls] hangup API failed (call may already be ended):', (e as any)?.response?.data ?? (e as any)?.message);
+      console.error('[calls] hangup API failed:', (e as any)?.response?.data ?? (e as any)?.message);
     }
   }
 
@@ -149,14 +161,23 @@ export const useCallsStore = defineStore('calls', () => {
     await subscribeToCallChannel(call.id);
   }
 
-  function setIncomingCall(call: Call) {
+  async function setIncomingCall(call: Call) {
     incomingCall.value = call;
     startRingtone();
+    // Subscribe immediately so we catch call.ended even before operator answers
+    await subscribeToCallChannel(call.id);
   }
 
-  function dismissIncoming() {
+  async function dismissIncoming() {
     stopRingtone();
+    const call = incomingCall.value;
     incomingCall.value = null;
+    if (call) {
+      // Notify backend — caller side will receive call.ended
+      try { await callsApi.hangup(call.id); } catch {}
+      const centrifuge = useCentrifugeStore();
+      centrifuge.unsubscribe(`call:${call.id}`);
+    }
   }
 
   async function disconnectLiveKit() {

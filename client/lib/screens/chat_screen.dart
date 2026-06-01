@@ -58,6 +58,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final chat = context.read<ChatProvider>();
     final userId = context.read<AuthProvider>().user?.id;
 
+    // Reset any stale call state from a previous session
+    await CallService().recoverState();
+
     await CentrifugeService().connect();
 
     if (userId != null) {
@@ -129,6 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _callId = callId;
     try {
       await CentrifugeService().subscribe('call:$callId', _onCallEvent);
+      RingtoneService().stopAll();
       final active = await CallService().answerIncomingCall(callId);
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CallScreen(call: active)));
@@ -164,6 +168,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final data = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
     final ev = data['event'] as String?;
     if (ev == 'call.connected') {
+      RingtoneService().stopAll();
       final url = data['livekitUrl'] as String?;
       final token = data['callerToken'] as String?;
       if (url != null && token != null) CallService().onCallConnected(url, token);
@@ -186,8 +191,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _startCall() async {
     if (_callId != null) return;
     try {
-      final active = await CallService().initiateCall();
+      final active = await CallService().initiateCall();  // API call first
       _callId = active.callId;
+      RingtoneService().startRingback();                  // then audio (non-blocking)
       await CentrifugeService().subscribe('call:${active.callId}', _onCallEvent);
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CallScreen(call: active)));

@@ -1,5 +1,100 @@
 # CHANGELOG
 
+## 2026-06-01 — Queue disappearing fix
+
+### Bug: Navbatdagi call ~10 sekundda avtomatik yo'qoladi
+
+**Sabab:** `queue.processor.ts` cron job (har 15s) `onCall: false` va `isOnline` tekshiruvisiz
+operator qidirdi. Operator call'da bo'lsa ham (`onCall=true`) uni topib, queued call'ni
+`status='ringing'`'ga o'tkazardi — shu bilan `getCallQueue` uni ko'rsatmay qo'ydi
+(faqat `status='queued'` calllar ko'rsatiladi).
+
+**Tuzatildi (`services/call/src/queue/queue.processor.ts`):**
+- `onCall: false` filtri qo'shildi — faqat bo'sh operator topiladi
+- `isOnline(op.userId)` Redis presence tekshiruvi qo'shildi — stale operatorlar o'tkazib yuboriladi
+- `onCall: true` qilinadi — dispatch paytida operator band belgilanadi
+- `if (!dispatched)` → callQueue SAQLANADI (o'chirilmaydi) — operator bo'shaganda retry
+
+**Natija:** Navbatdagi call operator bo'shagunga qadar turadi. 15s marotaba retry.
+
+---
+
+## 2026-06-01 — Call lifecycle fix (hangup sync + queue real-time)
+
+### Muammo 1 tuzatildi: Tugatish sinxron emas
+
+**Sabab:** Operator `call:<callId>` kanaliga faqat javob BERGANdan keyin subscribe bo'lar edi.
+Agar mijoz ring paytida chiqib ketsa → operator paneli `call.ended` eventini olmadi → incoming card qolib ketdi.
+
+**Tuzatildi (`operator-panel/src/stores/calls.ts`):**
+- `setIncomingCall` endi `async` — darhol `subscribeToCallChannel(call.id)` chaqiradi
+- `subscribeToCallChannel` barcha holatlarni boshqaradi:
+  - `call.ended` → incoming card YO'Q bo'lsa dismiss qiladi; active call bo'lsa tugatadi
+  - `call.connected` → outbound call uchun LiveKit ulanadi
+- `answerCall` — artiq re-subscribe qilmaydi (allaqachon subscribed)
+- `dismissIncoming` — endi `callsApi.hangup()` chaqiradi → mijoz ham `call.ended` oladi
+- `hangup` — call channel'dan unsubscribe qiladi
+
+**Natija:**
+- Mijoz ring paytida chiqib ketsa → operator panelida incoming card yo'qoladi ✓
+- Operator rad etsa (X) → mijoz "call ended" oladi ✓  
+- Bir tomon tugatsa → ikkinchi tomon ham tugaydi ✓
+
+### Muammo 2 tuzatildi: Navbat (Queue) kech chiqishi va yo'qolishi
+
+**Sabab 1:** `CallQueuePanel` 8 sekundda bir polling → queuega tushgan call kech ko'rindi.
+
+**Sabab 2:** Queue panel real-time event olmadi.
+
+**Tuzatildi:**
+- `call-service` `initiateCall` (queued): barcha online operatorlarga `call.queued` Centrifugo event publish qiladi
+- `MainLayout.vue`: `call.queued` event → `nova:queue-refresh` CustomEvent dispatch
+- `CallQueuePanel.vue`: `nova:queue-refresh` event eshitadi → darhol refresh
+- Polling interval: 8s → 5s (fallback)
+
+**Natija:** 2-mijoz queuega tushganda operator panelida Navbat DARHOL ko'rinadi ✓
+
+---
+
+## 2026-06-01 — Inbound call fix + on_call guard + ringtone isolation
+
+### Bug fix: Mijoz → operator inbound call ishlamadi
+
+**Sabab:** `call_service.dart`'ga `import '../services/ringtone_service.dart'` qo'shildi.
+`ringtone_service.dart` `dart:js_util` ishlatadi — bu Dart 3.6 da runtime xato berishi mumkin.
+`CallService.initiateCall()` ichida `RingtoneService().startRingback()` chaqirilganda
+xato sodir bo'lsa, `chat_screen.dart`'dagi `catch (_)` bloki uni yutib yuborardi va
+`POST /calls/initiate` so'rovi backend'ga UMUMAN KELMADI.
+
+**QOIDA (CHANGELOG'dan):** browser audio rejection jim OK, lekin CRITICAL FLOW'ni bloklamaslik kerak.
+
+**Tuzatildi:**
+- `call_service.dart`'dan `ringtone_service.dart` import va barcha `RingtoneService()` chaqiruvi olib tashlandi
+- Ringtone chaqiruvlari `chat_screen.dart` va `call_screen.dart`'ga ko'chirildi
+- API muvaffaqiyatdan KEYIN: `final active = await CallService().initiateCall(); RingtoneService().startRingback();`
+- Izolatsiya: ringtone xatosi call flow'ga ta'sir qilmaydi
+
+### Bug fix: Operator bir vaqtda bir nechta call qabul qilishi
+
+**Sabab:** `operator_states.on_call` call-service Prisma schema'da YO'Q edi.
+`findAvailableOperator` `onCall` tekshirmasdi → operator bir vaqtda cheksiz call qabul qilardi.
+
+**Tuzatildi:**
+- `services/call/prisma/schema.prisma`: `onCall Boolean @default(false) @map("on_call")` qo'shildi
+- `findAvailableOperator`: `onCall: false` filtri qo'shildi
+- `initiateCall`, `outboundCall`: operator topilganda `onCall = true` qilinadi
+- `outboundCall`: operator allaqachon call'da bo'lsa 400 qaytaradi
+- `hangupCall`: call tugaganda `onCall = false` qaytariladi
+- call-service rebuild qilindi
+
+### Tozalash: Eski stale calllar
+9 ta `ringing`/`initiating` holatdagi eski call `no_answer` ga o'tkazildi.
+
+### Flutter: `recoverState()` qo'shildi
+App start'da `_activeCall` tekshiriladi — eski terminated call bo'lsa tozalanadi.
+
+---
+
 ## 2026-06-01 — Operator Status Flapping Fix
 
 ### Root cause (status flapping)

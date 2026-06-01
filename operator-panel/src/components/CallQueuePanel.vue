@@ -36,12 +36,18 @@ const callsStore = useCallsStore();
 const queuedCalls = ref<QueuedCall[]>([]);
 let interval: ReturnType<typeof setInterval> | null = null;
 
+function onQueueRefresh() { loadQueue(); }
+
 onMounted(() => {
   loadQueue();
-  interval = setInterval(loadQueue, 8_000);
+  interval = setInterval(loadQueue, 5_000);
+  window.addEventListener('nova:queue-refresh', onQueueRefresh);
 });
 
-onUnmounted(() => { if (interval) clearInterval(interval); });
+onUnmounted(() => {
+  if (interval) clearInterval(interval);
+  window.removeEventListener('nova:queue-refresh', onQueueRefresh);
+});
 
 async function loadQueue() {
   try {

@@ -228,7 +228,11 @@ onMounted(async () => {
           startedAt: null,
           endedAt: null,
         };
-        calls.setIncomingCall(callObj as Parameters<typeof calls.setIncomingCall>[0]);
+        calls.setIncomingCall(callObj as Parameters<typeof calls.setIncomingCall>[0]).catch(() => {});
+      }
+      // New call added to queue — trigger immediate queue refresh
+      if (payload.event === 'call.queued') {
+        window.dispatchEvent(new CustomEvent('nova:queue-refresh'));
       }
     });
   }

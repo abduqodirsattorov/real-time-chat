@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/call_service.dart';
+import '../services/ringtone_service.dart';
 
 class CallScreen extends StatefulWidget {
   final ActiveCall call;
@@ -132,7 +133,7 @@ class _CallScreenState extends State<CallScreen> {
     return Column(
       children: [
         GestureDetector(
-          onTap: () => CallService().hangup(),
+          onTap: () { RingtoneService().stopAll(); CallService().hangup(); },
           child: const CircleAvatar(
             radius: 30,
             backgroundColor: Colors.red,
