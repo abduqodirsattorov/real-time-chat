@@ -78,7 +78,7 @@ enum UserRole {
 model User {
   id       String     @id @db.Uuid
   fullName String?    @map("full_name")
-  phone    String     @unique
+  phone    String?    @unique
   role     UserRole   @default(customer)
   locale   UserLocale @default(uz)
 

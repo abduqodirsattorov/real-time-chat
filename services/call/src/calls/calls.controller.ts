@@ -29,7 +29,12 @@ export class CallsController {
     return this.calls.outboundCall(user, dto);
   }
 
-  // QISM 10
+  // QISM 10 — Global queue (operator bo'lmagan inbound kutuvchi calllar)
+  @Get('queue')
+  getQueue() {
+    return this.calls.getCallQueue();
+  }
+
   @Get()
   getCalls(
     @CurrentUser() user: JwtUser,

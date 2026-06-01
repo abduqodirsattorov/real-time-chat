@@ -81,9 +81,9 @@ export class WebhooksController {
     const userId: string = body.user ?? body.data?.user;
     if (!userId) return {};
 
-    // Update last_seen to now
-    await this.presence.touchPresence(userId);
-    // Don't delete — let TTL expire naturally
+    // Do NOT refresh presence TTL on disconnect — let it expire naturally.
+    // The key acts as "active connection" indicator; refreshing it here would
+    // make isOnline() return true for 30 min after disconnect, breaking ACD.
 
     // Check if this user is an operator
     const user = await this.prisma.user.findUnique({

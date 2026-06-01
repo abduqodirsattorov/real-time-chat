@@ -62,13 +62,15 @@ export class CallsService {
       const holdMusicUrl = process.env.HOLD_MUSIC_URL ?? '';
       if (holdMusicUrl) await this.centrifugo.playAudioToCall(call.id, holdMusicUrl, 'caller');
 
+      const callerToken = await this.livekit.generateToken(user.sub, roomName);
+
       await this.rabbitmq.publish('call.initiated', {
         call_id: call.id, caller_id: user.sub, direction: 'inbound',
         status: 'queued', livekit_room: roomName, ts: Date.now(),
       });
 
       this.logger.log({ event: 'call_queued', callId: call.id, userId: user.sub });
-      return { call: { ...call, status: 'queued' }, status: 'queued', livekitRoom: roomName };
+      return { call: { ...call, status: 'queued' }, status: 'queued', livekitRoom: roomName, livekitUrl: this.livekit.wsUrl, callerToken };
     }
 
     await this.prisma.call.update({
@@ -76,8 +78,11 @@ export class CallsService {
       data: { calleeId: operator.userId, status: 'ringing', initiatedAt: new Date() },
     });
 
+    const callerToken = await this.livekit.generateToken(user.sub, roomName);
+
     await this.centrifugo.publishToUser(operator.userId, 'call.incoming', {
-      callId: call.id, callerId: user.sub, livekitRoom: roomName, ts: new Date().toISOString(),
+      callId: call.id, callerId: user.sub, livekitRoom: roomName,
+      livekitUrl: this.livekit.wsUrl, ts: new Date().toISOString(),
     });
 
     await this.rabbitmq.publish('call.initiated', {
@@ -86,7 +91,13 @@ export class CallsService {
     });
 
     this.logger.log({ event: 'call_ringing', callId: call.id, operatorId: operator.userId });
-    return { call: { ...call, status: 'ringing', calleeId: operator.userId }, status: 'ringing', livekitRoom: roomName };
+    return {
+      call: { ...call, status: 'ringing', calleeId: operator.userId },
+      status: 'ringing',
+      livekitRoom: roomName,
+      livekitUrl: this.livekit.wsUrl,
+      callerToken,
+    };
   }
 
   // ── QISM 4: Answer + Hangup ──────────────────────────────────────────────────
@@ -440,7 +451,38 @@ export class CallsService {
     return { recordingId: recording.id, status: 'processing', durationMs };
   }
 
-  // ── QISM 10: GET /calls, GET /calls/:id ──────────────────────────────────────
+  // ── QISM 10: GET /calls, GET /calls/:id, GET /calls/queue ────────────────────
+
+  async getCallQueue() {
+    const calls = await this.prisma.call.findMany({
+      where: { direction: 'inbound', status: 'queued' },
+      orderBy: { initiatedAt: 'asc' },
+      take: 50,
+      select: {
+        id: true, callerId: true, status: true, initiatedAt: true,
+        livekitRoom: true, metadata: true,
+      },
+    });
+
+    const callerIds = [...new Set(calls.map(c => c.callerId).filter(Boolean) as string[])];
+    const nameMap = new Map<string, string | null>();
+    if (callerIds.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: callerIds } },
+        select: { id: true, fullName: true, phone: true },
+      });
+      users.forEach(u => nameMap.set(u.id, u.fullName ?? u.phone ?? null));
+    }
+
+    return {
+      queue: calls.map(c => ({
+        ...c,
+        callerName: c.callerId ? (nameMap.get(c.callerId) ?? null) : null,
+        waitMs: Date.now() - new Date(c.initiatedAt).getTime(),
+      })),
+      total: calls.length,
+    };
+  }
 
   async getCall(callId: string) {
     const call = await this.prisma.call.findUnique({
@@ -499,11 +541,16 @@ export class CallsService {
         ...(requiredSkills.length > 0 ? { skills: { hasSome: requiredSkills } } : {}),
       },
       orderBy: { activeChats: 'asc' },
-      take: 10,
+      take: 20,
     });
 
     for (const c of candidates) {
       if (c.activeChats >= c.maxConcurrentChats) continue;
+
+      // Skip operators without active Redis presence (stale DB status)
+      const online = await this.redis.isOnline(c.userId);
+      if (!online) continue;
+
       const claimKey = `operator:claim:${c.userId}`;
       const claimed = await this.redis.setnx(claimKey, '1', CLAIM_TTL);
       if (claimed) return { userId: c.userId };

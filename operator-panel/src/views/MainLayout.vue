@@ -201,10 +201,8 @@ function setOfflineBeacon() {
 onMounted(async () => {
   if (!auth.user) await auth.loadMe();
 
+  // Only fire on actual page close/refresh — NOT on tab switch or DevTools open
   window.addEventListener('beforeunload', setOfflineBeacon);
-  window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') setOfflineBeacon();
-  });
 
   if (auth.user) {
     await centrifuge.subscribe(`chat:user#${auth.user.id}`, (raw) => {
@@ -238,7 +236,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('beforeunload', setOfflineBeacon);
-  setOfflineBeacon();
 });
 </script>
 

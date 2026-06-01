@@ -40,7 +40,13 @@ export const useCentrifugeStore = defineStore('centrifuge', () => {
 
     const { token } = await authApi.centrifugoSubscribeToken(channel);
 
-    const sub = client.value!.newSubscription(channel, { token });
+    const sub = client.value!.newSubscription(channel, {
+      token,
+      getToken: async (ctx: { channel: string }) => {
+        const res = await authApi.centrifugoSubscribeToken(ctx.channel);
+        return res.token;
+      },
+    });
     sub.on('publication', (ctx) => onPublication(ctx.data));
     sub.subscribe();
     subscriptions.set(channel, sub);

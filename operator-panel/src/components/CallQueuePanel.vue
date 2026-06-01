@@ -8,10 +8,10 @@
     <div class="queue-items">
       <div v-for="call in queuedCalls" :key="call.id" class="queue-item">
         <div class="queue-item-info">
-          <span class="queue-caller">Mijoz #{{ call.callerId.slice(0, 6) }}</span>
-          <span class="queue-wait">{{ waitTime(call.initiatedAt) }}</span>
+          <span class="queue-caller">{{ call.callerName ?? `Mijoz #${call.callerId.slice(0, 6)}` }}</span>
+          <span class="queue-wait">{{ formatWait(call.waitMs) }}</span>
         </div>
-        <button class="pickup-btn" @click="pickup(call.id)">Qabul</button>
+        <button class="pickup-btn" @click="pickup(call.id)" :disabled="!!callsStore.activeCall">Qabul</button>
       </div>
     </div>
   </div>
@@ -25,30 +25,28 @@ import { useCallsStore } from '@/stores/calls';
 interface QueuedCall {
   id: string;
   callerId: string;
+  callerName: string | null;
   status: string;
   initiatedAt: string;
   livekitRoom: string;
+  waitMs: number;
 }
 
-const calls = useCallsStore();
+const callsStore = useCallsStore();
 const queuedCalls = ref<QueuedCall[]>([]);
 let interval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
   loadQueue();
-  interval = setInterval(loadQueue, 10_000);
+  interval = setInterval(loadQueue, 8_000);
 });
 
 onUnmounted(() => { if (interval) clearInterval(interval); });
 
 async function loadQueue() {
   try {
-    const res = await api.get<{ calls: QueuedCall[] }>('/calls', {
-      params: { limit: 10, offset: 0 },
-    });
-    queuedCalls.value = (res.data.calls ?? []).filter(
-      (c) => c.status === 'queued' || c.status === 'ringing',
-    );
+    const res = await api.get<{ queue: QueuedCall[] }>('/calls/queue');
+    queuedCalls.value = res.data.queue ?? [];
   } catch (e) {
     console.error('[CallQueuePanel] loadQueue failed:', (e as any)?.response?.data ?? (e as any)?.message ?? e);
   }
@@ -56,15 +54,15 @@ async function loadQueue() {
 
 async function pickup(callId: string) {
   try {
-    await calls.answerCall(callId);
+    await callsStore.answerCall(callId);
     await loadQueue();
   } catch (e: unknown) {
     alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Xato');
   }
 }
 
-function waitTime(iso: string): string {
-  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+function formatWait(ms: number): string {
+  const secs = Math.floor(ms / 1000);
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;

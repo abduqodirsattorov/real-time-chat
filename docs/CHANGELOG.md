@@ -1,5 +1,185 @@
 # CHANGELOG
 
+## 2026-06-01 — Operator Status Flapping Fix
+
+### Root cause (status flapping)
+
+Operator "Mavjud" bosadi → 10 soniyadan keyin avtomatik "offline" qaytadi.
+
+**3 ta sabab bir vaqtda:**
+
+**1. Frontend beacon — `visibilitychange` + `onUnmounted` (asosiy sabab)**
+
+`operator-panel/src/views/MainLayout.vue` da:
+```javascript
+// NOTO'G'RI: tab hidden bo'lganda (DevTools ochganda, boshqa tabga o'tganda) offline yuborardi
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') setOfflineBeacon();
+});
+
+// NOTO'G'RI: Vite HMR fayl saqlaganda onUnmounted → offline
+onUnmounted(() => {
+  setOfflineBeacon(); // ← bu shart emas edi
+});
+```
+
+**Fix:** `visibilitychange` handler olib tashlandi. `onUnmounted` dan `setOfflineBeacon()` olib tashlandi. Faqat `beforeunload` (tab/brauzer yopilganda) qoldi.
+
+**2. Centrifugo disconnect webhook — `touchPresence` xatosi**
+
+`services/presence/src/webhooks/webhooks.controller.ts`:
+```typescript
+// NOTO'G'RI: disconnect'da presence TTL'ni yangilaydi
+// → isOnline() 30 daqiqa true qaytarardi, hatto foydalanuvchi offline bo'lsa ham
+await this.presence.touchPresence(userId); // disconnect handler da
+```
+
+**Fix:** Disconnect webhook'dan `touchPresence` olib tashlandi. Endi `presence:user:<id>` kaliti faqat connect va `setStatus` da yangilanadi. 30 daqiqada o'z-o'zidan expire bo'ladi.
+
+**3. Centrifugo reconnect'da status tiklanmaydi**
+
+Centrifugo restart/disconnect bo'lsa → disconnect webhook → DB = 'offline'. Client reconnect qilinganda esa hech narsa 'available' qaytarmasdi.
+
+**Fix:** `operator-panel/src/stores/presence.ts`:
+```typescript
+// Centrifugo reconnect bo'lganda desiredStatus'ni tiklaydi
+watch(() => centrifuge.connected, async (isConnected, wasConnected) => {
+  if (isConnected && !wasConnected && desiredStatus.value !== 'offline') {
+    await presenceApi.setStatus(desiredStatus.value); // restore
+  }
+});
+```
+
+### Stale operator_states tozalash
+
+`5df4ba3d` (Call Test) operatori DB da `status='available'` holda qolib ketgan edi.
+ACD uni topib, u yerga call yo'naltirar edi (lekin u haqiqatan offline).
+Qo'lda tozalandi:
+```sql
+UPDATE operator_states SET status = 'offline' WHERE user_id = '5df4ba3d-...';
+```
+Kelajakda bu holat bo'lmaydi chunki disconnect webhook `handleOperatorDisconnect` → 'offline' qo'yadi.
+
+### O'zgartirilgan fayllar
+- `operator-panel/src/views/MainLayout.vue` — visibilitychange + onUnmounted beacon olib tashlandi
+- `operator-panel/src/stores/presence.ts` — reconnect watcher + desiredStatus
+- `services/presence/src/webhooks/webhooks.controller.ts` — disconnect'da touchPresence olib tashlandi
+- presence-service rebuild + restart qilindi
+
+### Test tartibi
+
+```bash
+# 1. Operator login qiling → Avatar → "Mavjud" tanlang
+# 2. Redis da presence key paydo bo'lishi kerak:
+docker compose exec redis redis-cli KEYS "presence:user:*"
+# 3. DevTools oching, boshqa tabga o'ting — status o'ZGARMASIN
+# 4. 30 soniya kuting — hali "Mavjud" bo'lishi kerak:
+docker compose exec postgres psql -U nova nova_chat -c \
+  "SELECT user_id, status FROM operator_states WHERE status = 'available';"
+# 5. Keyin mijoz call qilsin → operator panelda card chiqishi kerak
+```
+
+---
+
+## 2026-06-01 — Call Signaling Fix
+
+### Bug fix 1: GET /calls → 500 Internal Server Error
+
+**Sabab:** `services/call/prisma/schema.prisma` da `User.phone` maydoni `String @unique` (NOT NULL)
+deb e'lon qilingan edi. Admin panel orqali yaratilgan email operatorlarda `phone = NULL` bo'ladi.
+Prisma runtime NULL qiymatni non-nullable fieldga moslashtirolmay `PrismaClientKnownRequestError` tashlardi.
+
+**Tuzatildi:** `services/call/prisma/schema.prisma`
+```
+- phone    String     @unique
++ phone    String?    @unique
+```
+call-service qayta build qilindi.
+
+---
+
+### Bug fix 2: Call signaling — operatorga incoming call modal chiqmasdi
+
+**Sabab (root cause):** `findAvailableOperator` funksiyasi DB da `status='available'` bo'lgan
+operatorlarni topadi, lekin Redis **presence** (`presence:user:<id>` kaliti) tekshirmaydi.
+
+Natijada:
+- Eski OTP test operator `5df4ba3d` (Call Test, +998907001001) DB da `status='available'` qolib ketgan
+- U haqiqatan offline — `presence:user:5df4ba3d` Redis kalit yo'q (30 daqiqa TTL o'tgan)
+- ACD uni topib, `chat:user#5df4ba3d` kanaliga `call.incoming` publish qiladi
+- Hech kim subscribe emas → event yo'qoladi → brauzerda modal chiqmaydi
+
+**Tuzatildi:** `services/call/src/calls/calls.service.ts` — `findAvailableOperator`
+```typescript
+// Before: faqat DB status tekshirardi
+// After: Redis presence ham tekshiriladi
+const online = await this.redis.isOnline(c.userId);
+if (!online) continue;
+```
+Endi faqat haqiqatan onlayn (Redis presence kaliti bor) operatorlarga call yo'naltiriladi.
+
+---
+
+### Bug fix 3: initiateCall — customer'ga callerToken qaytarilmaydi
+
+**Sabab:** `POST /calls/initiate` response'da `callerToken` (LiveKit JWT) yo'q edi.
+Customer LiveKit room'ga ulanolmasdi va operator javob bergach `call.connected` eventini kutishi kerak edi.
+
+**Tuzatildi:** `services/call/src/calls/calls.service.ts` — `initiateCall`
+- `callerToken` ham `ringing` ham `queued` holatlarda response'ga qo'shildi
+- `livekitUrl` ham qaytariladi
+- Customer endi darrov LiveKit'ga ulanib ringback tone eshitishi mumkin
+
+---
+
+### Yaxshilash: Centrifuge subscription token auto-refresh
+
+**Sabab:** `operator-panel/src/stores/centrifuge.ts` da subscription yaratilganda `getToken` callback
+yo'q edi. Uzoq sessiyalarda (>1 soat) yoki Centrifugo restart bo'lganda subscription token expire
+bo'lsa, subscription silent fail bo'lar va `call.incoming` eventlari qabul qilinmasdi.
+
+**Tuzatildi:** `operator-panel/src/stores/centrifuge.ts`
+```typescript
+// After:
+const sub = client.value!.newSubscription(channel, {
+  token,
+  getToken: async (ctx) => {
+    const res = await authApi.centrifugoSubscribeToken(ctx.channel);
+    return res.token;
+  },
+});
+```
+Endi Centrifugo restart yoki token expire bo'lganda subscription avtomatik yangilanadi.
+
+---
+
+### Test tartibi
+
+```bash
+# 1. Operator login → setStatus available
+# Browser: localhost:5173 → Login (OTP yoki email)
+# Avatar menu → "Available" tanlang
+
+# 2. Redis tekshir — operator presence bor bo'lishi kerak
+docker compose exec redis redis-cli KEYS "presence:user:*"
+
+# 3. Customer qo'ng'iroq qiladi (Flutter web: localhost:8889)
+# call-service logda "call_ringing" va operator ID to'g'ri bo'lishi kerak:
+docker compose logs call-service --tail=20 | grep "call_ringing\|call_queued"
+
+# 4. Operator panelda (localhost:5173) incoming call card ko'rinishi kerak
+# 5. GET /calls endi 200 qaytarishi kerak (CallQueuePanel xatosiz ishlaydi)
+```
+
+### Eslatma: stale operator_states
+DB da `5df4ba3d` operatori `status='available'` bo'lib qolgan.
+`isOnline` fix tufayli u endi tanlainmaydi. Agar tozalash kerak bo'lsa:
+```sql
+UPDATE operator_states SET status = 'offline' WHERE user_id = '5df4ba3d-944f-4f4b-9b56-3fa388b974a9';
+```
+
+---
+
 ## 2026-06-01 — Admin Panel + Regression Fix
 
 ### Qo'shilgan: Admin Panel
