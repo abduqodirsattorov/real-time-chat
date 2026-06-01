@@ -3,6 +3,7 @@ import 'dart:convert';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html show document, window;
 import 'package:centrifuge/centrifuge.dart' as centrifuge;
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../providers/chat_provider.dart';
 import '../services/api_service.dart';
 import '../services/call_service.dart';
 import '../services/centrifuge_service.dart';
+import '../services/ringtone_service.dart';
 import '../services/media_service.dart';
 import '../services/notification_service.dart';
 import '../services/voice_recorder_service.dart';
@@ -86,8 +88,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final callId = data['callId'] as String?;
       if (callId != null) {
         _callId = callId;
-        // Subscribe immediately so call.ended reaches us even if we don't answer
         CentrifugeService().subscribe('call:$callId', _onCallEvent);
+        RingtoneService().startRingtone();
         NotificationService().notifyIncomingCall();
         _showIncomingCallDialog(callId);
       }
@@ -126,18 +128,32 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _acceptIncomingCall(String callId) async {
     _callId = callId;
     try {
-      // Already subscribed in _onUserEvent — CentrifugeService handles duplicate subscribe gracefully
       await CentrifugeService().subscribe('call:$callId', _onCallEvent);
       final active = await CallService().answerIncomingCall(callId);
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CallScreen(call: active)));
       CentrifugeService().unsubscribe('call:$callId');
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
-    } finally { _callId = null; }
+    } on DioException catch (e) {
+      RingtoneService().stopAll();
+      CentrifugeService().unsubscribe('call:$callId');
+      // 400 = call already ended/canceled before answer — no need to alarm user
+      if (e.response?.statusCode == 400 || e.response?.statusCode == 404) return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Qo'ng'iroqni qabul qilishda xatolik")),
+        );
+      }
+    } catch (_) {
+      RingtoneService().stopAll();
+      CentrifugeService().unsubscribe('call:$callId');
+    } finally {
+      _callId = null;
+    }
   }
 
   Future<void> _rejectIncomingCall(String callId) async {
+    RingtoneService().stopAll();
+    _callId = null;
     try { await ApiService().post('/calls/$callId/hangup'); } catch (_) {}
   }
 
@@ -152,10 +168,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final token = data['callerToken'] as String?;
       if (url != null && token != null) CallService().onCallConnected(url, token);
     } else if (ev == 'call.ended') {
+      RingtoneService().stopAll();
       CallService().onCallEnded();
       final endedCallId = _callId;
       _callId = null;
-      // Dismiss incoming call dialog if still showing (operator hung up before customer answered)
       _dismissIncomingCallDialog();
       if (endedCallId != null) CentrifugeService().unsubscribe('call:$endedCallId');
     }
@@ -177,9 +193,13 @@ class _ChatScreenState extends State<ChatScreen> {
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CallScreen(call: active)));
       CentrifugeService().unsubscribe('call:${active.callId}');
       _callId = null;
-    } catch (e) {
+    } on DioException catch (e) {
+      RingtoneService().stopAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Xato: $e")));
+      final msg = e.response?.data?['message'] as String? ?? "Qo'ng'iroq qilishda xatolik";
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (_) {
+      RingtoneService().stopAll();
     }
   }
 

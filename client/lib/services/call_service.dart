@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:livekit_client/livekit_client.dart';
 import '../services/api_service.dart';
+import '../services/ringtone_service.dart';
 
 enum CallState { idle, ringing, connected, ended }
 
@@ -42,7 +43,10 @@ class CallService {
       callId: call['id'] as String,
       livekitRoom: res['livekitRoom'] as String,
       state: CallState.ringing,
+      livekitUrl: res['livekitUrl'] as String?,
+      token: res['callerToken'] as String?,
     );
+    RingtoneService().startRingback();
     _notify();
     return _activeCall!;
   }
@@ -50,7 +54,8 @@ class CallService {
   // Called when operator accepts inbound call (Centrifugo call.connected event)
   Future<void> onCallConnected(String livekitUrl, String token) async {
     if (_activeCall == null) return;
-    if (_activeCall!.state == CallState.connected) return; // already connected via answerIncomingCall
+    if (_activeCall!.state == CallState.connected) return;
+    RingtoneService().stopAll();
     _activeCall!.livekitUrl = livekitUrl;
     _activeCall!.token = token;
     _activeCall!.state = CallState.connected;
@@ -66,6 +71,7 @@ class CallService {
 
   // Called when Flutter customer answers an operator-initiated (outbound) call
   Future<ActiveCall> answerIncomingCall(String callId) async {
+    RingtoneService().stopAll();
     final res = await ApiService().post('/calls/$callId/answer');
     final livekitUrl = res['livekitUrl'] as String;
     final token = res['operatorToken'] as String;
@@ -90,6 +96,7 @@ class CallService {
   }
 
   Future<void> hangup() async {
+    RingtoneService().stopAll();
     final call = _activeCall;
     if (call == null) return;
     try {
@@ -99,6 +106,7 @@ class CallService {
   }
 
   void onCallEnded() {
+    RingtoneService().stopAll();
     _disconnect(CallState.ended);
   }
 

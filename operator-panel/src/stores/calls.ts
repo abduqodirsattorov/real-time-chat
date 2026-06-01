@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { Room as LiveKitRoom, RoomEvent, Track, RemoteParticipant } from 'livekit-client';
 import { callsApi, type Call, type Recording } from '@/api/calls';
 import { useCentrifugeStore } from '@/stores/centrifuge';
+import { startRingback, startRingtone, stopAll as stopRingtone } from '@/services/ringtone';
 
 export const useCallsStore = defineStore('calls', () => {
   const incomingCall = ref<Call | null>(null);
@@ -18,6 +19,7 @@ export const useCallsStore = defineStore('calls', () => {
     await centrifuge.subscribe(`call:${callId}`, (raw: unknown) => {
       const data = raw as { event?: string; callerToken?: string; livekitUrl?: string };
       if (data.event === 'call.ended') {
+        stopRingtone();
         activeCall.value = null;
         activeRecording.value = null;
         isOnHold.value = false;
@@ -25,6 +27,7 @@ export const useCallsStore = defineStore('calls', () => {
         disconnectLiveKit();
         centrifuge.unsubscribe(`call:${callId}`);
       } else if (data.event === 'call.connected' && data.callerToken && data.livekitUrl) {
+        stopRingtone();
         // Outbound: we are the caller — connect LiveKit with callerToken
         if (activeCall.value && !livekitRoom.value) {
           connectLiveKit(data.livekitUrl, activeCall.value.livekitRoom!, data.callerToken);
@@ -34,6 +37,7 @@ export const useCallsStore = defineStore('calls', () => {
   }
 
   async function answerCall(callId: string) {
+    stopRingtone();
     const call = await callsApi.answer(callId);
     activeCall.value = call;
     incomingCall.value = null;
@@ -78,6 +82,7 @@ export const useCallsStore = defineStore('calls', () => {
   }
 
   async function hangup() {
+    stopRingtone();
     if (!activeCall.value) return;
     const callId = activeCall.value.id;
     // Clear state immediately so UI responds right away
@@ -134,6 +139,7 @@ export const useCallsStore = defineStore('calls', () => {
 
   async function startOutbound(calleeId: string) {
     const call = await callsApi.outbound(calleeId);
+    startRingback();
     activeCall.value = call;
     incomingCall.value = null;
     isOnHold.value = false;
@@ -145,9 +151,11 @@ export const useCallsStore = defineStore('calls', () => {
 
   function setIncomingCall(call: Call) {
     incomingCall.value = call;
+    startRingtone();
   }
 
   function dismissIncoming() {
+    stopRingtone();
     incomingCall.value = null;
   }
 
