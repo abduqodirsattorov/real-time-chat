@@ -25,11 +25,32 @@
           <span v-if="rooms.totalUnread > 0" class="nav-badge">{{ rooms.totalUnread > 99 ? '99+' : rooms.totalUnread }}</span>
         </router-link>
 
+        <router-link to="/calls" class="nav-icon" :class="{ active: $route.path.startsWith('/calls') }" :title="t('calls.history')">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.42 2 2 0 0 1 3.6 1.24h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+          </svg>
+        </router-link>
+
         <button class="nav-icon" :title="t('common.loading')" @click="showSearch = !showSearch">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
         </button>
+
+        <router-link
+          v-if="auth.isAdmin"
+          to="/admin/users"
+          class="nav-icon"
+          :class="{ active: $route.path.startsWith('/admin') }"
+          :title="t('admin.users')"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </router-link>
       </div>
 
       <!-- Bottom: status + avatar -->
@@ -99,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
@@ -165,8 +186,25 @@ async function doLogout() {
   router.push('/login');
 }
 
+function setOfflineBeacon() {
+  const token = localStorage.getItem('access_token');
+  if (!token) return;
+  // keepalive: true — page yopilayotganda ham so'rov tugallashini kafolatlaydi
+  fetch('/api/v1/operator/status', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'offline' }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 onMounted(async () => {
   if (!auth.user) await auth.loadMe();
+
+  window.addEventListener('beforeunload', setOfflineBeacon);
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') setOfflineBeacon();
+  });
 
   if (auth.user) {
     await centrifuge.subscribe(`chat:user#${auth.user.id}`, (raw) => {
@@ -196,6 +234,11 @@ onMounted(async () => {
       }
     });
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', setOfflineBeacon);
+  setOfflineBeacon();
 });
 </script>
 

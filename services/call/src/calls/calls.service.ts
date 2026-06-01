@@ -460,7 +460,27 @@ export class CallsService {
       this.prisma.call.findMany({ where, orderBy: { initiatedAt: 'desc' }, take: limit, skip: offset }),
       this.prisma.call.count({ where }),
     ]);
-    return { calls, total, limit, offset };
+
+    // Batch-fetch names for caller/callee
+    const userIds = [...new Set(
+      calls.flatMap(c => [c.callerId, c.calleeId]).filter(Boolean) as string[]
+    )];
+    const nameMap = new Map<string, string | null>();
+    if (userIds.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, fullName: true, phone: true },
+      });
+      users.forEach(u => nameMap.set(u.id, u.fullName ?? u.phone ?? null));
+    }
+
+    const enriched = calls.map(c => ({
+      ...c,
+      callerName: c.callerId ? (nameMap.get(c.callerId) ?? null) : null,
+      calleeName: c.calleeId ? (nameMap.get(c.calleeId) ?? null) : null,
+    }));
+
+    return { calls: enriched, total, limit, offset };
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────

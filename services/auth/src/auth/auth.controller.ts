@@ -22,6 +22,7 @@ import { UpdateLocaleDto } from './dto/update-locale.dto';
 import { CentrifugoTokenDto } from './dto/centrifugo-token.dto';
 import { CentrifugoSubscribeDto } from './dto/centrifugo-subscribe.dto';
 import { NovaSsoDto } from './dto/nova-sso.dto';
+import { EmailLoginDto } from './dto/email-login.dto';
 
 @Controller('auth')
 @UseGuards(JwtAuthGuard)
@@ -53,6 +54,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.phone);
+  }
+
+  @Public()
+  @Post('email-login')
+  @HttpCode(HttpStatus.OK)
+  emailLogin(@Body() dto: EmailLoginDto) {
+    return this.authService.emailLogin(dto.email, dto.password);
   }
 
   @Public()

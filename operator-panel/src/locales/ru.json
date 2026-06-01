@@ -2,6 +2,8 @@
   "login": {
     "title": "Nova Chat",
     "subtitle": "Панель оператора",
+    "tabOtp": "Телефон (OTP)",
+    "tabEmail": "Email",
     "phone": "Номер телефона",
     "phonePlaceholder": "+998901234567",
     "sendCode": "Отправить код",
@@ -12,7 +14,12 @@
     "sending": "Отправка...",
     "verifying": "Проверка...",
     "enterCode": "Введите код",
-    "codeSent": "Код отправлен на {phone}"
+    "codeSent": "Код отправлен на {phone}",
+    "email": "Email",
+    "emailPlaceholder": "operator@example.com",
+    "password": "Пароль",
+    "passwordPlaceholder": "Введите пароль",
+    "signIn": "Войти"
   },
   "chat": {
     "noRoom": "Выберите чат",
@@ -64,6 +71,57 @@
     "retry": "Повторить",
     "logout": "Выйти",
     "save": "Сохранить",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "delete": "Удалить"
+  },
+  "calls": {
+    "history": "Звонки",
+    "noHistory": "История звонков пуста",
+    "counterpart": "КТО",
+    "direction": "НАПРАВЛЕНИЕ",
+    "status": "СТАТУС",
+    "duration": "ДЛИТ.",
+    "time": "ВРЕМЯ",
+    "loadMore": "Показать ещё",
+    "dir": {
+      "inbound": "Входящий",
+      "outbound": "Исходящий",
+      "internal": "Внутренний"
+    },
+    "st": {
+      "completed": "Завершён",
+      "connected": "Соединён",
+      "no_answer": "Без ответа",
+      "canceled": "Отменён",
+      "failed": "Ошибка",
+      "ringing": "Звонит",
+      "queued": "В очереди",
+      "initiating": "Инициализация",
+      "on_hold": "Удержание",
+      "transferring": "Перевод"
+    }
+  },
+  "admin": {
+    "title": "Администраторы",
+    "users": "Пользователи",
+    "addUser": "Добавить",
+    "addUserTitle": "Добавить нового пользователя",
+    "addUserSubmit": "Добавить",
+    "fullName": "ИМЯ ФАМИЛИЯ",
+    "role": "РОЛЬ",
+    "firstName": "Имя",
+    "lastName": "Фамилия",
+    "loginEmail": "Логин",
+    "noUsers": "Нет пользователей",
+    "tabName": "Имя Фамилия",
+    "tabPassword": "Изменить пароль",
+    "savedOk": "Сохранено",
+    "deleteTitle": "Удалить пользователя",
+    "deleteConfirm": "Вы уверены, что хотите удалить {name}? Это действие нельзя отменить.",
+    "roles": {
+      "operator": "Оператор",
+      "supervisor": "Супервайзер",
+      "admin": "Администратор"
+    }
   }
 }

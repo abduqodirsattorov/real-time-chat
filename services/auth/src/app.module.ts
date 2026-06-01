@@ -1,6 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
+import { AdminModule } from './admin/admin.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -29,6 +30,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     PrismaModule,
     RedisModule,
     AuthModule,
+    AdminModule,
     HealthModule,
   ],
 })

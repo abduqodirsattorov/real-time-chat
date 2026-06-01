@@ -27,16 +27,26 @@ export class OperatorService {
       throw new ForbiddenException('Faqat operator/supervisor status o\'zgartira oladi');
     }
 
-    const opState = await this.prisma.operatorState.findUnique({ where: { userId: user.sub } });
-    if (!opState) throw new NotFoundException('Operator holati topilmadi');
-
-    const oldStatus = opState.status;
+    const existing = await this.prisma.operatorState.findUnique({ where: { userId: user.sub } });
+    const oldStatus = existing?.status ?? 'offline';
     const newStatus = dto.status as string;
 
-    // DB update
-    await this.prisma.operatorState.update({
+    const opState = await this.prisma.operatorState.upsert({
       where: { userId: user.sub },
-      data: { status: dto.status as any, lastStatusAt: new Date() },
+      create: {
+        userId: user.sub,
+        status: dto.status as any,
+        activeChats: 0,
+        maxConcurrentChats: 5,
+        onCall: false,
+        skills: [],
+        languages: ['uz' as any],
+        lastStatusAt: new Date(),
+      },
+      update: {
+        status: dto.status as any,
+        lastStatusAt: new Date(),
+      },
     });
 
     // Atomic Redis ZSET update

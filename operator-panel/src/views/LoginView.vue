@@ -68,11 +68,21 @@
           <button :class="{ active: locale === 'ru' }" @click="switchLang('ru')">RU</button>
         </div>
 
-        <h2>{{ step === 1 ? t('login.title') : t('login.enterCode') }}</h2>
-        <p class="subtitle">{{ step === 1 ? t('login.subtitle') : t('login.codeSent', { phone }) }}</p>
+        <h2>{{ loginMode === 'otp' && step === 2 ? t('login.enterCode') : t('login.title') }}</h2>
+        <p class="subtitle">{{ loginMode === 'otp' && step === 2 ? t('login.codeSent', { phone }) : t('login.subtitle') }}</p>
 
-        <!-- Step 1: Phone -->
-        <form v-if="step === 1" @submit.prevent="sendOtp" class="form">
+        <!-- Login mode tabs -->
+        <div class="mode-tabs">
+          <button :class="{ active: loginMode === 'otp' }" @click="loginMode = 'otp'; step = 1; error = ''">
+            {{ t('login.tabOtp') }}
+          </button>
+          <button :class="{ active: loginMode === 'email' }" @click="loginMode = 'email'; step = 1; error = ''">
+            {{ t('login.tabEmail') }}
+          </button>
+        </div>
+
+        <!-- Step 1: Phone (OTP mode) -->
+        <form v-if="loginMode === 'otp' && step === 1" @submit.prevent="sendOtp" class="form">
           <div class="field">
             <label>{{ t('login.phone') }}</label>
             <input
@@ -91,7 +101,7 @@
         </form>
 
         <!-- Step 2: OTP -->
-        <form v-else @submit.prevent="verifyOtp" class="form">
+        <form v-else-if="loginMode === 'otp' && step === 2" @submit.prevent="verifyOtp" class="form">
           <div class="field">
             <label>{{ t('login.code') }}</label>
             <input
@@ -115,6 +125,47 @@
           <p v-if="error" class="error">{{ error }}</p>
         </form>
 
+        <!-- Email + password login -->
+        <form v-else-if="loginMode === 'email'" @submit.prevent="loginByEmail" class="form">
+          <div class="field">
+            <label>{{ t('login.email') }}</label>
+            <input
+              v-model="email"
+              type="email"
+              :placeholder="t('login.emailPlaceholder')"
+              autocomplete="email"
+              required
+            />
+          </div>
+          <div class="field">
+            <label>{{ t('login.password') }}</label>
+            <div class="pw-wrap">
+              <input
+                v-model="password"
+                :type="showPw ? 'text' : 'password'"
+                :placeholder="t('login.passwordPlaceholder')"
+                autocomplete="current-password"
+                required
+              />
+              <button type="button" class="pw-toggle" @click="showPw = !showPw" tabindex="-1">
+                <svg v-if="showPw" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary" :disabled="loading">
+            <span v-if="loading" class="spinner" />
+            {{ loading ? t('login.verifying') : t('login.signIn') }}
+          </button>
+          <p v-if="error" class="error">{{ error }}</p>
+        </form>
+
       </div>
     </div>
   </div>
@@ -131,9 +182,13 @@ const { t, locale } = useI18n();
 const router = useRouter();
 const auth = useAuthStore();
 
+const loginMode = ref<'otp' | 'email'>('otp');
 const step = ref(1);
 const phone = ref('');
 const code = ref('');
+const email = ref('');
+const password = ref('');
+const showPw = ref(false);
 const loading = ref(false);
 const error = ref('');
 
@@ -162,6 +217,20 @@ async function verifyOtp() {
     const data = await authApi.verifyOtp(phone.value, code.value);
     await auth.afterLogin(data);
     router.push('/chat');
+  } catch (e: unknown) {
+    error.value = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.error');
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loginByEmail() {
+  error.value = '';
+  loading.value = true;
+  try {
+    await auth.loginWithEmail(email.value, password.value);
+    const dest = auth.isAdmin ? '/admin' : '/chat';
+    router.push(dest);
   } catch (e: unknown) {
     error.value = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.error');
   } finally {
@@ -420,6 +489,60 @@ input::placeholder { color: var(--c-text-3); }
   padding: 8px 12px;
   background: #fff1f0;
   border-radius: var(--r-xs);
+}
+
+/* Mode tabs */
+.mode-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--c-surface);
+  border-radius: var(--r-sm);
+  padding: 3px;
+  margin-bottom: 8px;
+}
+
+.mode-tabs button {
+  flex: 1;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--r-sm) - 2px);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text-2);
+  transition: all 0.15s;
+}
+
+.mode-tabs button.active {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* Password field */
+.pw-wrap {
+  position: relative;
+}
+
+.pw-wrap input {
+  width: 100%;
+  padding-right: 44px;
+  box-sizing: border-box;
+}
+
+.pw-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--c-text-2);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
 }
 
 /* Spinner */

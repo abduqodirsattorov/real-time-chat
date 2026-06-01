@@ -2,6 +2,8 @@
   "login": {
     "title": "Nova Chat",
     "subtitle": "Operator paneli",
+    "tabOtp": "Telefon (OTP)",
+    "tabEmail": "Email",
     "phone": "Telefon raqam",
     "phonePlaceholder": "+998901234567",
     "sendCode": "Kod yuborish",
@@ -12,7 +14,12 @@
     "sending": "Yuborilmoqda...",
     "verifying": "Tekshirilmoqda...",
     "enterCode": "Kodni kiriting",
-    "codeSent": "{phone} raqamiga kod yuborildi"
+    "codeSent": "{phone} raqamiga kod yuborildi",
+    "email": "Email",
+    "emailPlaceholder": "operator@example.com",
+    "password": "Parol",
+    "passwordPlaceholder": "Parolni kiriting",
+    "signIn": "Kirish"
   },
   "chat": {
     "noRoom": "Suhbatni tanlang",
@@ -64,6 +71,57 @@
     "retry": "Qayta urinish",
     "logout": "Chiqish",
     "save": "Saqlash",
-    "cancel": "Bekor qilish"
+    "cancel": "Bekor qilish",
+    "delete": "O'chirish"
+  },
+  "calls": {
+    "history": "Qo'ng'iroqlar",
+    "noHistory": "Qo'ng'iroqlar tarixi yo'q",
+    "counterpart": "KIM",
+    "direction": "YO'NALISH",
+    "status": "HOLAT",
+    "duration": "DAVOM",
+    "time": "VAQT",
+    "loadMore": "Ko'proq ko'rsatish",
+    "dir": {
+      "inbound": "Kiruvchi",
+      "outbound": "Chiquvchi",
+      "internal": "Ichki"
+    },
+    "st": {
+      "completed": "Yakunlandi",
+      "connected": "Ulandi",
+      "no_answer": "Javobsiz",
+      "canceled": "Bekor",
+      "failed": "Xato",
+      "ringing": "Jiringlayapti",
+      "queued": "Navbatda",
+      "initiating": "Boshlanmoqda",
+      "on_hold": "Kutishda",
+      "transferring": "O'tkazilmoqda"
+    }
+  },
+  "admin": {
+    "title": "Administratorlar",
+    "users": "Foydalanuvchilar",
+    "addUser": "Qo'shish",
+    "addUserTitle": "Yangi foydalanuvchi qo'shish",
+    "addUserSubmit": "Qo'shish",
+    "fullName": "ISMI FAMILYASI",
+    "role": "ROLI",
+    "firstName": "Ism",
+    "lastName": "Familiya",
+    "loginEmail": "Login",
+    "noUsers": "Foydalanuvchilar yo'q",
+    "tabName": "Ism Familiya",
+    "tabPassword": "Parolni o'zgartirish",
+    "savedOk": "Saqlandi",
+    "deleteTitle": "Foydalanuvchini o'chirish",
+    "deleteConfirm": "{name} ni o'chirishni tasdiqlaysizmi? Bu amalni qaytarib bo'lmaydi.",
+    "roles": {
+      "operator": "Operator",
+      "supervisor": "Supervisor",
+      "admin": "Admin"
+    }
   }
 }

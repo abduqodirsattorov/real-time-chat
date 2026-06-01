@@ -6,6 +6,8 @@ export interface Room {
   status: string;
   title: string | null;
   customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
   operatorId: string | null;
   lastMessageAt: string | null;
   botHandled: boolean;

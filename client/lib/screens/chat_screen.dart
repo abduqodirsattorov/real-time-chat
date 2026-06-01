@@ -31,6 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _initialized = false;
   bool _typing = false;
   String? _callId;
+  bool _incomingDialogShowing = false;
 
   // Typing indicator
   bool _opTyping = false;
@@ -84,6 +85,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (data['event'] == 'call.incoming' && _callId == null) {
       final callId = data['callId'] as String?;
       if (callId != null) {
+        _callId = callId;
+        // Subscribe immediately so call.ended reaches us even if we don't answer
+        CentrifugeService().subscribe('call:$callId', _onCallEvent);
         NotificationService().notifyIncomingCall();
         _showIncomingCallDialog(callId);
       }
@@ -91,6 +95,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showIncomingCallDialog(String callId) {
+    _incomingDialogShowing = true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -104,14 +109,14 @@ class _ChatScreenState extends State<ChatScreen> {
         content: const Text("Operator siz bilan bog'lanmoqda..."),
         actions: [
           TextButton(
-            onPressed: () { Navigator.of(context).pop(); _rejectIncomingCall(callId); },
+            onPressed: () { _incomingDialogShowing = false; Navigator.of(context).pop(); _rejectIncomingCall(callId); },
             child: const Text('Rad etish', style: TextStyle(color: Colors.red)),
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF48bb78)),
             icon: const Icon(Icons.call, color: Colors.white, size: 18),
             label: const Text('Qabul qilish', style: TextStyle(color: Colors.white)),
-            onPressed: () { Navigator.of(context).pop(); _acceptIncomingCall(callId); },
+            onPressed: () { _incomingDialogShowing = false; Navigator.of(context).pop(); _acceptIncomingCall(callId); },
           ),
         ],
       ),
@@ -121,6 +126,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _acceptIncomingCall(String callId) async {
     _callId = callId;
     try {
+      // Already subscribed in _onUserEvent — CentrifugeService handles duplicate subscribe gracefully
       await CentrifugeService().subscribe('call:$callId', _onCallEvent);
       final active = await CallService().answerIncomingCall(callId);
       if (!mounted) return;
@@ -147,8 +153,18 @@ class _ChatScreenState extends State<ChatScreen> {
       if (url != null && token != null) CallService().onCallConnected(url, token);
     } else if (ev == 'call.ended') {
       CallService().onCallEnded();
+      final endedCallId = _callId;
       _callId = null;
+      // Dismiss incoming call dialog if still showing (operator hung up before customer answered)
+      _dismissIncomingCallDialog();
+      if (endedCallId != null) CentrifugeService().unsubscribe('call:$endedCallId');
     }
+  }
+
+  void _dismissIncomingCallDialog() {
+    if (!mounted || !_incomingDialogShowing) return;
+    _incomingDialogShowing = false;
+    Navigator.of(context, rootNavigator: true).maybePop();
   }
 
   Future<void> _startCall() async {

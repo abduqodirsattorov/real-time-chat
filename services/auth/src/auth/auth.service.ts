@@ -10,6 +10,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { createHmac } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { RegisterDto } from './dto/register.dto';
@@ -102,6 +103,21 @@ export class AuthService {
     if (user.status === 'suspended') throw new ForbiddenException('Hisobingiz bloklangan');
 
     return this.otpSend(phone);
+  }
+
+  // ── Email + Password Login (operator/admin) ───────────────────────────────────
+
+  async emailLogin(email: string, password: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash) throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
+    if (user.status === 'suspended') throw new ForbiddenException('Hisobingiz bloklangan');
+    if (user.role === 'customer') throw new ForbiddenException('Bu kirish turi faqat operator va adminlar uchun');
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
+
+    this.logger.log({ event: 'email_login', userId: user.id });
+    return this.issueTokens(user.id, user.role, user.locale);
   }
 
   // ── Refresh Token Rotation ────────────────────────────────────────────────────

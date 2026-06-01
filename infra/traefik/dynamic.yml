@@ -10,6 +10,13 @@ http:
       service: auth-service
       middlewares: ["strip-api-prefix", "cors"]
 
+    # ── Admin (auth-service) ──────────────────────────────────────────────────
+    admin:
+      rule: "PathPrefix(`/api/v1/admin`)"
+      entrypoints: ["web"]
+      service: auth-service
+      middlewares: ["strip-api-prefix", "cors"]
+
     # ── Chat Service ──────────────────────────────────────────────────────────
     chat:
       rule: "PathPrefix(`/api/v1/rooms`) || PathPrefix(`/api/v1/messages`) || PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/support`)"

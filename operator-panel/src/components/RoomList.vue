@@ -191,6 +191,8 @@ async function answerCall() {
 // ── Room helpers ─────────────────────────────────────────────────────────────
 
 function roomLabel(room: Room): string {
+  if (room.customerName) return room.customerName;
+  if (room.customerPhone) return room.customerPhone;
   if (room.title) return room.title;
   if (room.customerId) return `Mijoz #${room.customerId.slice(0, 6)}`;
   return `Room ${room.id.slice(0, 6)}`;

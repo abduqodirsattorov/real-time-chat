@@ -28,6 +28,28 @@ export const router = createRouter({
           name: 'chat-room',
           component: () => import('@/views/ChatView.vue'),
         },
+        {
+          path: 'calls',
+          name: 'calls',
+          component: () => import('@/views/CallHistoryView.vue'),
+        },
+        {
+          path: 'admin',
+          redirect: '/admin/users',
+          meta: { adminOnly: true },
+        },
+        {
+          path: 'admin/users',
+          name: 'admin-users',
+          component: () => import('@/views/admin/AdminUsersView.vue'),
+          meta: { adminOnly: true },
+        },
+        {
+          path: 'admin/users/:id',
+          name: 'admin-user-detail',
+          component: () => import('@/views/admin/AdminUserDetailView.vue'),
+          meta: { adminOnly: true },
+        },
       ],
     },
     {
@@ -37,12 +59,18 @@ export const router = createRouter({
   ],
 });
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!to.meta.public && !auth.token) {
     return { name: 'login' };
   }
   if (to.name === 'login' && auth.token) {
-    return { name: 'chat' };
+    return auth.isAdmin ? { name: 'admin-users' } : { name: 'chat' };
+  }
+  if (to.meta.adminOnly) {
+    if (!auth.user) await auth.loadMe().catch((e) => {
+      console.error('[router] loadMe() failed in admin guard:', e?.message ?? e);
+    });
+    if (!auth.isAdmin) return { name: 'chat' };
   }
 });

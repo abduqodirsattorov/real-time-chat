@@ -1,5 +1,19 @@
 import { api } from './client';
 
+export interface CallHistoryItem {
+  id: string;
+  callerId: string | null;
+  calleeId: string | null;
+  callerName: string | null;
+  calleeName: string | null;
+  direction: string;
+  status: string;
+  talkDurationMs: number | null;
+  initiatedAt: string;
+  answeredAt: string | null;
+  endedAt: string | null;
+}
+
 export interface Call {
   id: string;
   roomId: string;
@@ -95,5 +109,9 @@ export const callsApi = {
 
   stopRecording(callId: string, recordingId: string) {
     return api.post(`/calls/${callId}/recording/${recordingId}/stop`);
+  },
+
+  getHistory(params?: { limit?: number; offset?: number }) {
+    return api.get<{ calls: CallHistoryItem[]; total: number }>('/calls', { params }).then((r) => r.data);
   },
 };

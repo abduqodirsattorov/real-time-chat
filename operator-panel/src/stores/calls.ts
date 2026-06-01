@@ -79,12 +79,18 @@ export const useCallsStore = defineStore('calls', () => {
 
   async function hangup() {
     if (!activeCall.value) return;
-    await callsApi.hangup(activeCall.value.id);
-    await disconnectLiveKit();
+    const callId = activeCall.value.id;
+    // Clear state immediately so UI responds right away
     activeCall.value = null;
     activeRecording.value = null;
     isOnHold.value = false;
     isMuted.value = false;
+    await disconnectLiveKit();
+    try {
+      await callsApi.hangup(callId);
+    } catch (e) {
+      console.error('[calls] hangup API failed (call may already be ended):', (e as any)?.response?.data ?? (e as any)?.message);
+    }
   }
 
   async function toggleHold() {

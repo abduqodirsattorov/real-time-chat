@@ -14,7 +14,8 @@ export interface VerifyRes {
 
 export interface MeRes {
   id: string;
-  phone: string;
+  phone?: string;
+  email?: string;
   fullName: string;
   role: string;
 }
@@ -23,6 +24,11 @@ export const authApi = {
   /** Step 1: telefon raqam yuborish — OTP chiqariladi (auth-service logda ko'rinadi) */
   sendOtp(phone: string): Promise<LoginRes> {
     return api.post('/auth/login', { phone }).then((r) => r.data);
+  },
+
+  /** Email + parol bilan login (operator/admin) */
+  emailLogin(email: string, password: string): Promise<VerifyRes> {
+    return api.post('/auth/email-login', { email, password }).then((r) => r.data);
   },
 
   /** Step 2: POST /auth/otp/verify { phone, otp } → tokens */

@@ -49,7 +49,9 @@ async function loadQueue() {
     queuedCalls.value = (res.data.calls ?? []).filter(
       (c) => c.status === 'queued' || c.status === 'ringing',
     );
-  } catch { /* silent */ }
+  } catch (e) {
+    console.error('[CallQueuePanel] loadQueue failed:', (e as any)?.response?.data ?? (e as any)?.message ?? e);
+  }
 }
 
 async function pickup(callId: string) {

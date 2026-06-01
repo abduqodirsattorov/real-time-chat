@@ -54,11 +54,29 @@ export class RoomsService {
 
     const hasMore = rooms.length > limit;
     const items = hasMore ? rooms.slice(0, limit) : rooms;
+
+    // Batch-fetch customer names for display
+    const customerIds = [...new Set(items.map(r => r.customerId).filter(Boolean))] as string[];
+    const customerMap = new Map<string, { fullName: string | null; phone: string | null }>();
+    if (customerIds.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: customerIds } },
+        select: { id: true, fullName: true, phone: true },
+      });
+      users.forEach(u => customerMap.set(u.id, { fullName: u.fullName, phone: u.phone }));
+    }
+
+    const enriched = items.map(r => ({
+      ...r,
+      customerName: r.customerId ? (customerMap.get(r.customerId)?.fullName ?? null) : null,
+      customerPhone: r.customerId ? (customerMap.get(r.customerId)?.phone ?? null) : null,
+    }));
+
     const nextCursor = hasMore && items[items.length - 1].lastMessageAt
       ? Buffer.from(items[items.length - 1].lastMessageAt!.toISOString()).toString('base64')
       : null;
 
-    return { items, nextCursor, hasMore };
+    return { items: enriched, nextCursor, hasMore };
   }
 
   // ── Create room ──────────────────────────────────────────────────────────────

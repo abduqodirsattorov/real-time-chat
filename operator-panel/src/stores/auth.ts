@@ -18,16 +18,22 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('refresh_token', refresh);
   }
 
+  async function loginWithEmail(email: string, password: string) {
+    const data = await authApi.emailLogin(email, password);
+    await afterLogin(data);
+  }
+
   async function afterLogin(data: VerifyRes) {
     setTokens(data.accessToken, data.refreshToken);
-    // /auth/otp/verify doesn't return user — load separately
     await loadMe();
 
     const centrifuge = useCentrifugeStore();
     await centrifuge.connect();
 
     const presence = usePresenceStore();
-    await presence.setStatus('available').catch(() => {});
+    await presence.setStatus('available').catch((e) => {
+      console.error('[auth] setStatus("available") failed after login:', e?.response?.data ?? e?.message ?? e);
+    });
   }
 
   async function loadMe() {
@@ -49,5 +55,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.clear();
   }
 
-  return { token, user, isAdmin, afterLogin, loadMe, logout };
+  return { token, user, isAdmin, loginWithEmail, afterLogin, loadMe, logout };
 });
