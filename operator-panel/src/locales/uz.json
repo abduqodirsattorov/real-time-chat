@@ -101,6 +101,30 @@
       "transferring": "O'tkazilmoqda"
     }
   },
+  "profile": {
+    "title": "Profil",
+    "unknown": "Noma'lum mijoz",
+    "unknownCustomer": "Noma'lum",
+    "tags": "Teglar",
+    "tagPlaceholder": "Teg qo'shing...",
+    "addTag": "Teg",
+    "notes": "Izohlar",
+    "notesPlaceholder": "Operator izohi...",
+    "noNotes": "Izoh yo'q",
+    "transactions": "Tranzaksiyalarini ko'rish",
+    "phone": "Telefon",
+    "fullName": "Ism",
+    "passport": "Pasport",
+    "nationality": "Millat",
+    "birthdate": "Tug'ilgan sana",
+    "language": "Til",
+    "uid": "UID",
+    "citizenship": "Fuqarolik",
+    "identified": "Identifikatsiya",
+    "blocked": "Bloklangan",
+    "yes": "Ha",
+    "registered": "Ro'yxatdan o'tgan"
+  },
   "admin": {
     "title": "Administratorlar",
     "users": "Foydalanuvchilar",

@@ -19,7 +19,7 @@ http:
 
     # ── Chat Service ──────────────────────────────────────────────────────────
     chat:
-      rule: "PathPrefix(`/api/v1/rooms`) || PathPrefix(`/api/v1/messages`) || PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/support`) || PathPrefix(`/api/v1/products`)"
+      rule: "PathPrefix(`/api/v1/rooms`) || PathPrefix(`/api/v1/messages`) || PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/support`) || PathPrefix(`/api/v1/products`) || PathPrefix(`/api/v1/customers`)"
       entrypoints: ["web"]
       service: chat-service
       middlewares: ["strip-api-prefix", "cors"]

@@ -66,7 +66,7 @@
 - Queue processor `onCall` tekshirmasdi → queued call 15s da yo'qolardi
 
 ## Keyingi mumkin ishlar (REJA.md dan)
-1. 1-BOSQICH: Mijoz profil paneli (Nova profile JSONB)
+1. ~~1-BOSQICH: Mijoz profil paneli (Nova profile JSONB)~~ ✅ TUGALLANDI
 2. 2-BOSQICH: Tranzaksiya bo'limi + qidiruv + filtr
 3. 3-BOSQICH: Tranzaksiya detali + actionlar (Nova stub)
 4. 4-BOSQICH: Admin field/action config UI

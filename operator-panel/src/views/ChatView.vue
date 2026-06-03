@@ -10,10 +10,11 @@
       <div v-else class="no-room">
         <div class="empty-state">
           <div class="empty-icon">📫</div>
-          <p class="empty-label">Select a chat to start messaging</p>
+          <p class="empty-label">{{ t('chat.noRoom') }}</p>
         </div>
       </div>
     </div>
+    <CustomerProfilePanel :room-id="rooms.activeRoomId" />
   </div>
 </template>
 
@@ -25,6 +26,7 @@ import { useRoomsStore } from '@/stores/rooms';
 import RoomList from '@/components/RoomList.vue';
 import MessageList from '@/components/MessageList.vue';
 import MessageInput from '@/components/MessageInput.vue';
+import CustomerProfilePanel from '@/components/CustomerProfilePanel.vue';
 
 const { t } = useI18n();
 const route = useRoute();

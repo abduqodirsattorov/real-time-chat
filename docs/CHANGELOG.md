@@ -1,5 +1,55 @@
 # CHANGELOG
 
+## 2026-06-03 — 1-BOSQICH: Mijoz profil paneli
+
+### Qo'shildi
+
+**DB:**
+- `customers` jadval (allaqachon init.sql da bor edi): product_id, user_id, external_uid, profile_data JSONB, notes, tags
+- `migrate_customers.sql` — mavjud DBga xavfsiz qo'shish
+- trigger: `trg_customers_updated_at` avtomatik updated_at yangilash
+
+**Backend (chat-service):**
+- `GET /customers/by-room/:roomId` — room orqali customer profil (upsert bilan avtomatik yaratish)
+- `GET /customers/by-uid/:uid` — Nova external_uid bo'yicha qidirish
+- `POST /customers/upsert` — external_uid yoki userId bo'yicha yaratish/yangilash (Nova integratsiya poydevori)
+- `PATCH /customers/:id` — operator izoh (notes) va teg (tags) saqlash
+- Izolyatsiya: operator faqat o'z product mijozlarini ko'radi
+- DTO fix: `@IsUUID()` → `@IsString()` (default UUID `000...002` v4 validation o'tmaydi)
+
+**Frontend (operator-panel):**
+- `CustomerProfilePanel.vue` — chat o'ngida profil paneli
+  - Yig'ish/ochish (collapsible, 260px → 44px)
+  - Avatar (ism initials, rang userId dan)
+  - Maydonlar: ism, telefon, pasport, millat, tug'ilgan sana, til, UID, fuqarolik, identifikatsiya holati (✓/✗), ro'yxatdan o'tgan
+  - Teglar (qo'shish/o'chirish, inline edit)
+  - Izoh (click-to-edit textarea, blur da saqlanadi)
+  - "Tranzaksiyalarini ko'rish" tugmasi (disabled — 2-bosqich)
+  - Noma'lum mijoz holati
+- `api/customers.ts` — getByRoom, upsert, update
+- `ChatView.vue` — CustomerProfilePanel integratsiya qilindi
+- `i18n uz.json + ru.json` — `profile.*` kalitlari qo'shildi (22 ta kalit)
+
+**Test natijalari:**
+- `GET /customers/by-room/:id` → avtomatik upsert, user info bilan ✓
+- `POST /customers/upsert` → profile_data JSONB saqlanadi ✓
+- `PATCH /customers/:id` — notes/tags yangilanadi ✓
+- Product izolyatsiya: customers productga bog'liq ✓
+- Chat o'ngida profil paneli ko'rinadi ✓
+
+**Testlash:**
+```
+1. localhost:5173 → login → product tanlash → chat
+2. Suhbat ochish → o'ngda "Profil" paneli ko'rinadi
+3. Test profil: POST /customers/upsert (nova profil data bilan)
+4. Profil: ism, pasport, identifikatsiya ko'rinadi
+5. Operator izoh yozadi (blur da saqlanadi)
+6. Teg qo'shadi (Enter/blur)
+7. Boshqa product suhbatida customer ko'rinmaydi (izolyatsiya)
+```
+
+---
+
 ## 2026-06-03 — Call history product izolyatsiya bugfix
 
 ### Root cause (3 ta muammo birgalikda)

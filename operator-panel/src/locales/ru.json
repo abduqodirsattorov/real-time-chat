@@ -101,6 +101,30 @@
       "transferring": "Перевод"
     }
   },
+  "profile": {
+    "title": "Профиль",
+    "unknown": "Неизвестный клиент",
+    "unknownCustomer": "Неизвестно",
+    "tags": "Теги",
+    "tagPlaceholder": "Добавить тег...",
+    "addTag": "Тег",
+    "notes": "Заметки",
+    "notesPlaceholder": "Заметка оператора...",
+    "noNotes": "Нет заметок",
+    "transactions": "Транзакции клиента",
+    "phone": "Телефон",
+    "fullName": "ФИО",
+    "passport": "Паспорт",
+    "nationality": "Национальность",
+    "birthdate": "Дата рождения",
+    "language": "Язык",
+    "uid": "UID",
+    "citizenship": "Гражданство",
+    "identified": "Идентификация",
+    "blocked": "Заблокирован",
+    "yes": "Да",
+    "registered": "Зарегистрирован"
+  },
   "admin": {
     "title": "Администраторы",
     "users": "Пользователи",
