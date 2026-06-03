@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 2026-06-03 — Avtomatik integration test suite (70 test)
+
+### Qo'shildi
+
+**tests/integration/ — yangi test fayllar:**
+- `setup.ts` — token helper: admin email login, OTP via Redis
+- `operator.test.ts` — 13 test: email login, operator_states upsert, status flapping, IsUUID regression, GET /calls NULL phone fix
+- `multitenancy.test.ts` — 16 test: product isolation (rooms, calls, transactions), CRUD, soft-delete
+- `transactions.test.ts` — 19 test: upsert, search, filtr, pagination, product isolation (FINTECH CRITICAL)
+
+**package.json yangi skriptlar:**
+- `npm run test:operator` / `test:multitenancy` / `test:transactions`
+- `npm run test:regression` — 3 ta regressiya suite birgalikda
+
+**tests/run-tests.ps1** — PowerShell runner:
+```powershell
+.\tests\run-tests.ps1                  # barcha testlar
+.\tests\run-tests.ps1 -Suite operator  # bitta suite
+```
+
+**docs/TESTING.md** — qanday ishga tushirish, qaysi bug qaysi test
+
+**Test natijasi:** 70/70 PASS (6 suite, ~7 soniya)
+
+---
+
 ## 2026-06-03 — 5 muammo tuzatish + 2 yangi funksiya
 
 ### Bug 1 (Flutter 400): Client chat ocha olmasdi

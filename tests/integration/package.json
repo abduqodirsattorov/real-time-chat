@@ -2,10 +2,14 @@
   "name": "nova-chat-integration-tests",
   "version": "1.0.0",
   "scripts": {
-    "test": "jest --testTimeout=30000",
-    "test:auth": "jest auth.test.ts --testTimeout=30000",
-    "test:chat": "jest chat.test.ts --testTimeout=30000",
-    "test:call": "jest call.test.ts --testTimeout=30000"
+    "test": "jest --testTimeout=30000 --forceExit",
+    "test:auth": "jest auth.test.ts --testTimeout=30000 --forceExit",
+    "test:chat": "jest chat.test.ts --testTimeout=30000 --forceExit",
+    "test:call": "jest call.test.ts --testTimeout=30000 --forceExit",
+    "test:operator": "jest operator.test.ts --testTimeout=30000 --forceExit",
+    "test:multitenancy": "jest multitenancy.test.ts --testTimeout=30000 --forceExit",
+    "test:transactions": "jest transactions.test.ts --testTimeout=30000 --forceExit",
+    "test:regression": "jest --testPathPattern='operator|multitenancy|transactions' --testTimeout=30000 --forceExit --verbose"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",
