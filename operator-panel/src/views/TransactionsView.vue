@@ -9,8 +9,12 @@
         <div class="tx-title-row">
           <h1 class="tx-title">{{ t('transactions.title') }}</h1>
           <!-- Bulk actions bar -->
-          <div v-if="selectedIds.size > 0" class="bulk-bar">
-            <span class="bulk-count">{{ t('transactions.selected', { n: selectedIds.size }) }}</span>
+          <div v-if="selectAllMode || selectedIds.size > 0" class="bulk-bar">
+            <span class="bulk-count">
+              {{ selectAllMode
+                ? t('transactions.selectedAll', { n: total })
+                : t('transactions.selected', { n: selectedIds.size }) }}
+            </span>
             <div class="bulk-menu-wrap" ref="bulkMenuRef">
               <button class="btn-bulk" @click="showBulkMenu = !showBulkMenu">
                 {{ t('transactions.bulkActions') }}
@@ -18,13 +22,13 @@
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
               </button>
-              <div v-if="showBulkMenu" class="dropdown-menu">
+              <div v-if="showBulkMenu" class="dropdown-menu dropdown-menu--left">
                 <button v-for="act in TX_BULK_ACTIONS" :key="act" class="dropdown-item" @click="onBulkAction(act)">
                   {{ act }}
                 </button>
               </div>
             </div>
-            <button class="bulk-clear" @click="selectedIds.clear()">×</button>
+            <button class="bulk-clear" @click="clearSelection">×</button>
           </div>
         </div>
 
@@ -123,7 +127,22 @@
           <thead>
             <tr>
               <th class="col-check">
-                <input type="checkbox" :checked="allChecked" :indeterminate="someChecked" @change="toggleAll" />
+                <div class="hdr-check-wrap" ref="hdrCheckRef">
+                  <input
+                    type="checkbox"
+                    :checked="allChecked || selectAllMode"
+                    :indeterminate="someChecked"
+                    @click.prevent="onHeaderCheckboxClick"
+                  />
+                  <div v-if="showSelectPopup" class="select-popup">
+                    <button class="select-popup-item" @click="selectCurrentPage">
+                      {{ t('transactions.selectCurrentPage', { n: items.length }) }}
+                    </button>
+                    <button class="select-popup-item" @click="selectAllPagesHandler">
+                      {{ t('transactions.selectAllPages', { n: total }) }}
+                    </button>
+                  </div>
+                </div>
               </th>
               <th class="col-id">{{ t('transactions.colId') }}</th>
               <th>{{ t('transactions.colUser') }}</th>
@@ -310,8 +329,11 @@ const userUidFilter = ref('');
 
 const showBulkMenu = ref(false);
 const showActionsMenu = ref(false);
+const showSelectPopup = ref(false);
+const selectAllMode = ref(false);
 const bulkMenuRef = ref<HTMLElement | null>(null);
 const actionsMenuRef = ref<HTMLElement | null>(null);
+const hdrCheckRef = ref<HTMLElement | null>(null);
 
 const filters = ref({
   dateFrom: '', dateTo: '',
@@ -426,6 +448,7 @@ async function load() {
     items.value = res.items;
     total.value = res.total;
     selectedIds.value.clear();
+    selectAllMode.value = false;
   } catch (e: any) {
     error.value = e?.response?.data?.message ?? t('common.error');
   } finally {
@@ -495,7 +518,38 @@ function onAction(act: string) {
 
 function onBulkAction(act: string) {
   showBulkMenu.value = false;
-  alert(`[STUB] Bulk: ${act}\nTanlangan: ${selectedIds.value.size} ta\n\nNova API integratsiyasida bajariladi.`);
+  const scope = selectAllMode.value
+    ? `Barcha ${total.value} ta (barcha sahifalar)`
+    : `${selectedIds.value.size} ta (shu sahifa)`;
+  alert(`[STUB] Bulk: ${act}\nTanlangan: ${scope}\n\nNova API integratsiyasida bajariladi.`);
+}
+
+function clearSelection() {
+  selectedIds.value.clear();
+  selectedIds.value = new Set(selectedIds.value);
+  selectAllMode.value = false;
+}
+
+function onHeaderCheckboxClick() {
+  if (selectAllMode.value || allChecked.value) {
+    clearSelection();
+    showSelectPopup.value = false;
+  } else {
+    showSelectPopup.value = !showSelectPopup.value;
+  }
+}
+
+function selectCurrentPage() {
+  selectAllMode.value = false;
+  items.value.forEach((tx) => selectedIds.value.add(tx.id));
+  selectedIds.value = new Set(selectedIds.value);
+  showSelectPopup.value = false;
+}
+
+function selectAllPagesHandler() {
+  selectAllMode.value = true;
+  selectedIds.value = new Set(items.value.map((tx) => tx.id));
+  showSelectPopup.value = false;
 }
 
 // ── Click outside menus ───────────────────────────────────────────────────────
@@ -505,6 +559,9 @@ function handleClickOutside(e: MouseEvent) {
   }
   if (showActionsMenu.value && actionsMenuRef.value && !actionsMenuRef.value.contains(e.target as Node)) {
     showActionsMenu.value = false;
+  }
+  if (showSelectPopup.value && hdrCheckRef.value && !hdrCheckRef.value.contains(e.target as Node)) {
+    showSelectPopup.value = false;
   }
 }
 
@@ -526,6 +583,8 @@ onUnmounted(() => {
 <style scoped>
 .tx-page {
   display: flex;
+  flex: 1;
+  width: 100%;
   height: 100%;
   overflow: hidden;
   background: var(--c-bg);
@@ -540,7 +599,8 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.tx-list-col.narrow { flex: 0 0 62%; }
+/* When detail open: fixed pixel widths prevent blank gap */
+.tx-list-col.narrow { flex: 1 1 0; min-width: 0; }
 
 /* Header */
 .tx-header {
@@ -912,6 +972,50 @@ onUnmounted(() => {
   min-width: 260px;
 }
 
+/* Bulk menu opens to the LEFT so it doesn't clip on right edge */
+.dropdown-menu--left {
+  left: auto;
+  right: 0;
+  min-width: 240px;
+}
+
+/* Header checkbox select popup */
+.hdr-check-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.select-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 600;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  min-width: 220px;
+  padding: 4px;
+  white-space: nowrap;
+}
+
+.select-popup-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--c-text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+
+.select-popup-item:hover { background: var(--c-surface); color: var(--c-accent); }
+
 .dropdown-section-label {
   font-size: 10px;
   font-weight: 700;
@@ -948,7 +1052,8 @@ onUnmounted(() => {
 
 /* ── Detail col ── */
 .tx-detail-col {
-  flex: 0 0 38%;
+  flex: 0 0 420px;
+  width: 420px;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--c-border);

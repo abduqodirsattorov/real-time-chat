@@ -161,6 +161,9 @@
     "userUid": "Mijoz UID",
     "selectAll": "Barchasini tanlash",
     "selected": "{n} ta tanlangan",
+    "selectedAll": "Barcha {n} ta tanlangan",
+    "selectCurrentPage": "Shu sahifadagi {n} tani",
+    "selectAllPages": "Barcha {n} tani (barcha sahifalar)",
     "bulkActions": "Amallar",
     "page": "Sahifa"
   },

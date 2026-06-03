@@ -24,7 +24,27 @@ export class SupportService {
   async requestSupport(user: JwtUser, dto: SupportRequestDto) {
     const productId = dto.productId ?? null;
 
-    // 1. Mavjud ochiq support room bormi?
+    // 1. Redis lock — race condition oldini olish
+    const lockKey = `support:create:${user.sub}:${productId ?? 'null'}`;
+    const acquired = await this.redis.setnx(lockKey, '1', 10);
+    if (!acquired) {
+      // Boshqa so'rov qayta ishlanyapti — kuting va mavjud roomni qaytaring
+      await new Promise(r => setTimeout(r, 250));
+      const existing = await this.prisma.room.findFirst({
+        where: {
+          type: 'support',
+          status: { in: ['open', 'pending'] },
+          members: { some: { userId: user.sub, leftAt: null } },
+          ...(productId ? { productId } : {}),
+        },
+      });
+      if (existing) {
+        throw new ConflictException({ message: 'Mavjud so\'rov', roomId: existing.id });
+      }
+    }
+
+    try {
+    // 2. Mavjud ochiq support room bormi?
     const existingRoom = await this.prisma.room.findFirst({
       where: {
         type: 'support',
@@ -41,7 +61,7 @@ export class SupportService {
       });
     }
 
-    // 2. Yangi room (pending) — product bilan bog'lash
+    // 3. Yangi room (pending) — product bilan bog'lash
     const room = await this.prisma.room.create({
       data: {
         type: 'support',
@@ -71,6 +91,9 @@ export class SupportService {
 
     await this.assignOperator(room.id, operator.userId, user.sub, user.locale);
     return { room, status: 'active', operatorId: operator.userId };
+    } finally {
+      await this.redis.del(lockKey);
+    }
   }
 
   private async findAvailableOperator(

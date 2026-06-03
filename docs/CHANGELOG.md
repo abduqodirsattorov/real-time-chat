@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-06-03 — 4 ta UI/bug tuzatish
+
+### Bug 1 (Layout): Detal paneli to'liq ekranni egallaydi
+- `tx-page { flex: 1; width: 100% }` — parent flex container'ni to'ldiradi
+- `tx-list-col.narrow { flex: 1 1 0 }` — qolgan joyni egallaydi
+- `tx-detail-col { flex: 0 0 420px }` — fixed 420px, bo'sh joy yo'q
+- Natija: list + detail = 100%, gap = 0px ✓
+
+### Bug 2 (Bulk menu): Kesilmaslik
+- `dropdown-menu--left { right: 0 }` — o'ngdan ochiladi, ekrandan chiqmaydi
+- right_edge=1401px, viewport=1440px → kesilmaydi ✓
+
+### Bug 3 (Chat dublikat): Bir mijoz — bitta suhbat
+**Root cause:** Race condition — bir xil vaqtda (0.005s farq) 2 ta so'rov
+kelganda ikkala so'rov ham "existing room yo'q" deb yangi room yaratgan.
+
+**DB tozalash:** 3 ta eski dublikat room yopildi (status='closed'). Har 
+mijoz uchun eng so'nggi faol room saqlanib qoldi.
+
+**DB constraint:** Partial unique index qo'shildi:
+`UNIQUE ON rooms(customer_id, COALESCE(product_id, ...)) WHERE type='support' AND status IN ('open','pending')`
+Endi DB darajasida bir mijozga 2 ta active room yaratib bo'lmaydi.
+
+**support.service.ts:** Redis lock per customer:
+- `setnx support:create:<userId>:<productId>` 10s TTL
+- Lock olina olmasa → mavjud room topib 409 qaytaradi
+- Lock bo'shatiladi `finally` blokida
+
+**RoomList.vue:** Qidiruvda `status !== 'closed'` filtri qo'shildi —
+yopilgan roomlar qidiruv natijasida ko'rinmaydi.
+
+Natija: "+998901234568" qidiruvi → 1 ta room (oldin 2 ta) ✓
+
+### Bug 4 (Select all): Shu sahifa / Barcha sahifalar
+- Header checkbox bosilganda popup (2 variant):
+  - "Shu sahifadagi N tani" → joriy 20 ta qator belgilanadi
+  - "Barcha N tani (barcha sahifalar)" → `selectAllMode=true`, "Barcha N ta tanlangan"
+- Bulk amal chaqirilganda `selectAllMode` scopeni ayting (Barcha X ta vs N ta)
+- `clearSelection()` → ikkala holatni ham tozalaydi
+
+---
+
 ## 2026-06-03 — 2-BOSQICH patch: 9 yaxshilanish
 
 ### Tuzatildi / Qo'shildi

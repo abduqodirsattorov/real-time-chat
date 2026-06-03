@@ -161,6 +161,9 @@
     "userUid": "UID клиента",
     "selectAll": "Выбрать все",
     "selected": "Выбрано: {n}",
+    "selectedAll": "Выбраны все {n}",
+    "selectCurrentPage": "На этой стр. ({n})",
+    "selectAllPages": "Все {n} (все страницы)",
     "bulkActions": "Действия",
     "page": "Стр."
   },
