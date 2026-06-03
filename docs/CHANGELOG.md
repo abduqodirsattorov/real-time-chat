@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## 2026-06-03 — 2-BOSQICH patch: 9 yaxshilanish
+
+### Tuzatildi / Qo'shildi
+
+**Config:**
+- `operator-panel/src/config/txFilterOptions.ts` — filtr qiymatlari bir joyda (TX_TYPES, TX_PROVIDERS, TX_DEBIT_STATES, TX_CREDIT_STATES, TX_STRANAS, TX_ACTIONS, TX_BULK_ACTIONS). Nova API kelganda shu config yangilanadi.
+
+**Backend (transactions.service.ts):**
+- Yangi `search` param: `external_id ILIKE '%q%' OR data->>'phone' ILIKE '%q%'` — telefon yoki ext_id bilan qidiruv
+- Yangi `strana` filtr: `data->>'strana' = value`
+- `debitState`/`creditState` filtr case-insensitive (`lower()`)
+- Limit default: 30 → 20 (pagination uchun)
+- `getOne` ham camelCase alias ishlatadi (eski xato tuzatildi)
+- `phone` param o'chirildi → `search` bilan almashtirildi
+
+**Frontend (TransactionsView.vue) — to'liq qayta yozildi:**
+- **Pagination:** "load more" → sahifa raqamlari (1 2 3 ...). 20 ta/sahifa, ellipsis bilan
+- **Filtr SELECT:** Provayder, Tur, Debit holati, Kredit holati, Strana — dropdown (config'dan). Sana date picker
+- **Qidiruv:** "Telefon yoki ID bo'yicha" — ext_id YOKI phone bo'yicha (unified search)
+- **Checkbox + bulk:** har qatorda checkbox, "hammasini tanlash" header, bulk actions bar ("N ta tanlangan" + dropdown 7 ta amal)
+- **Ustun nomlari:** "SANA" → "YARATILGAN VAQT", yangi ustun "TO'LAB BERILGAN" (`data.paid_at`)
+- **Detal amallar:** pastdagi stub o'chirildi → tepada "..." (doira, #3B6FF5 rang) tugma, 13 ta amal dropdown
+- **stateClass:** Ok/Fail/Err/Cancel/Pending — barcha variantlar hisobga olindi
+
+**CustomerProfilePanel:**
+- `goToTransactions()`: externalUid bo'lsa → `userUid` filter; yo'q bo'lsa → `search` (phone) bilan o'tish
+
+**RoomList.vue:**
+- Qidiruv: `roomLabel(r)` + `r.customerPhone` — telefon bo'yicha ham qidiruv
+
+**i18n uz/ru:** transactions.* kalitlari yangilandi (colCreatedAt, colPaidAt, filterStrana, bulkActions, selected, ...)
+
+**Test natijalari (Playwright brauzer):**
+- C4 pagination: 20 qator/sahifa, sahifa 2 ham 20, "56 ta" info ✓
+- C9 checkbox: 20 qator checkbox, "hammasini belgilash", "20 ta tanlangan", 7 bulk amal ✓
+- C9 ustunlar: "YARATILGAN VAQT" va "TO'LAB BERILGAN" ko'rinadi ✓
+- C2 filter: 5 select dropdown (9 provayder opsiya) ✓
+- C3 date picker: 2026-01-15 ishlaydi ✓
+- C5 phone: "+998901234567" → 17 natija ✓
+- C6 extId: "TX-BULK-001" → 1 natija ✓
+- C8 dots: rangli tugma, 13 ta amal dropdown ✓
+- C7 chat: "+998900000001" → 12 dan 3 room filtrlangan ✓
+- C1 chatdan: externalUid banner ko'rinadi, filtr ishlaydi ✓ (test roomda nova_uid_12345 → match yo'q; real data bilan to'liq ishlaydi)
+
+---
+
 ## 2026-06-03 — 2-BOSQICH: Tranzaksiya bo'limi
 
 ### Qo'shildi

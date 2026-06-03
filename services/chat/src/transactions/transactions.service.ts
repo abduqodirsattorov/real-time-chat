@@ -10,41 +10,32 @@ const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 export class TransactionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── LIST (filtr, qidiruv, pagination) ────────────────────────────────────
+  // ── LIST ─────────────────────────────────────────────────────────────────
   async list(user: JwtUser, productId: string, q: ListTransactionsQuery) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
 
-    const limit = Math.min(q.limit ?? 30, 100);
+    const limit = Math.min(q.limit ?? 20, 100);
     const offset = q.offset ?? 0;
 
-    // Phone bo'yicha user_uid aniqlash
-    let resolvedUserUid = q.userUid;
-    if (q.phone && !resolvedUserUid) {
-      const u = await this.prisma.user.findFirst({ where: { phone: q.phone } });
-      if (u) {
-        const cust = await this.prisma.customer.findFirst({
-          where: { productId, userId: u.id },
-          select: { externalUid: true },
-        });
-        resolvedUserUid = cust?.externalUid ?? undefined;
-        if (!resolvedUserUid) {
-          // phone topildi lekin customer yo'q → bo'sh natija
-          return { items: [], total: 0, limit, offset };
-        }
-      } else {
-        return { items: [], total: 0, limit, offset };
-      }
-    }
-
-    // JSONB filtrlar uchun raw SQL qurish
     const conditions: string[] = [`t.product_id = $1::uuid`];
     const params: unknown[] = [productId];
     let idx = 2;
 
-    if (resolvedUserUid) {
+    // userUid (chatdan direct filter)
+    if (q.userUid) {
       conditions.push(`t.user_uid = $${idx++}`);
-      params.push(resolvedUserUid);
+      params.push(q.userUid);
     }
+
+    // search: external_id OR data.phone
+    if (q.search) {
+      conditions.push(
+        `(t.external_id ILIKE $${idx} OR t.data->>'phone' ILIKE $${idx})`,
+      );
+      params.push(`%${q.search}%`);
+      idx++;
+    }
+
     if (q.dateFrom) {
       conditions.push(`t.created_at >= $${idx++}::timestamptz`);
       params.push(q.dateFrom);
@@ -62,12 +53,16 @@ export class TransactionsService {
       params.push(q.type);
     }
     if (q.debitState) {
-      conditions.push(`t.data->>'debit_state' = $${idx++}`);
+      conditions.push(`lower(t.data->>'debit_state') = lower($${idx++})`);
       params.push(q.debitState);
     }
     if (q.creditState) {
-      conditions.push(`t.data->>'credit_state' = $${idx++}`);
+      conditions.push(`lower(t.data->>'credit_state') = lower($${idx++})`);
       params.push(q.creditState);
+    }
+    if (q.strana) {
+      conditions.push(`t.data->>'strana' = $${idx++}`);
+      params.push(q.strana);
     }
 
     const where = conditions.join(' AND ');
@@ -104,9 +99,20 @@ export class TransactionsService {
   // ── GET ONE ───────────────────────────────────────────────────────────────
   async getOne(user: JwtUser, productId: string, id: string) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
-    const tx = await this.prisma.transaction.findUnique({ where: { id } });
-    if (!tx || tx.productId !== productId) throw new NotFoundException('Tranzaksiya topilmadi');
-    return tx;
+    const [rows] = await this.prisma.$queryRawUnsafe<any[]>(
+      `SELECT t.id,
+              t.product_id   AS "productId",
+              t.external_id  AS "externalId",
+              t.user_uid     AS "userUid",
+              t.data,
+              t.created_at   AS "createdAt",
+              t.updated_at   AS "updatedAt"
+       FROM transactions t
+       WHERE t.id = $1::uuid AND t.product_id = $2::uuid`,
+      id, productId,
+    );
+    if (!rows) throw new NotFoundException('Tranzaksiya topilmadi');
+    return rows;
   }
 
   // ── UPSERT ────────────────────────────────────────────────────────────────

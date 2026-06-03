@@ -20,7 +20,7 @@ export interface TransactionListResult {
 export interface TransactionFilters {
   limit?: number;
   offset?: number;
-  phone?: string;
+  search?: string;
   userUid?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -28,6 +28,7 @@ export interface TransactionFilters {
   type?: string;
   debitState?: string;
   creditState?: string;
+  strana?: string;
 }
 
 export const transactionsApi = {

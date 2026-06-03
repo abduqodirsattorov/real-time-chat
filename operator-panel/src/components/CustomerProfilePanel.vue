@@ -255,9 +255,15 @@ function goToTransactions() {
   const uid = customer.value?.externalUid ?? (customer.value?.profileData as any)?.uid;
   if (uid) {
     router.push({ path: '/transactions', query: { userUid: uid } });
-  } else {
-    router.push('/transactions');
+    return;
   }
+  // externalUid yo'q → telefon orqali qidirish
+  const phone = customer.value?.user?.phone ?? (customer.value?.profileData as any)?.phone;
+  if (phone) {
+    router.push({ path: '/transactions', query: { search: phone } });
+    return;
+  }
+  router.push('/transactions');
 }
 </script>
 

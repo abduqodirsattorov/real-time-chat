@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsObject, IsNumberString } from 'class-validator';
+import { IsOptional, IsString, IsObject } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpsertTransactionDto {
@@ -19,16 +19,18 @@ export class UpsertTransactionDto {
 export class ListTransactionsQuery {
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
-  limit?: number = 30;
+  limit?: number = 20;
 
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
   offset?: number = 0;
 
+  // search: ext_id ILIKE '%q%' OR data->>'phone' ILIKE '%q%'
   @IsOptional()
   @IsString()
-  phone?: string;
+  search?: string;
 
+  // direct userUid filter (from chat profile)
   @IsOptional()
   @IsString()
   userUid?: string;
@@ -56,4 +58,8 @@ export class ListTransactionsQuery {
   @IsOptional()
   @IsString()
   creditState?: string;
+
+  @IsOptional()
+  @IsString()
+  strana?: string;
 }

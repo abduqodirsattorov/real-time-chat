@@ -213,8 +213,12 @@ function lastPreview(roomId: string, status: string): string {
 }
 
 const filteredRooms = computed(() => {
-  const q = search.value.toLowerCase();
-  return rooms.rooms.filter((r) => roomLabel(r).toLowerCase().includes(q));
+  const q = search.value.toLowerCase().trim();
+  if (!q) return rooms.rooms;
+  return rooms.rooms.filter((r) =>
+    roomLabel(r).toLowerCase().includes(q) ||
+    (r.customerPhone ?? '').toLowerCase().includes(q),
+  );
 });
 
 async function selectRoom(roomId: string) {
