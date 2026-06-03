@@ -26,6 +26,8 @@ import { ProductsController } from './products/products.controller';
 import { ProductsService } from './products/products.service';
 import { CustomersController } from './customers/customers.controller';
 import { CustomersService } from './customers/customers.service';
+import { TransactionsController } from './transactions/transactions.controller';
+import { TransactionsService } from './transactions/transactions.service';
 
 @Module({
   imports: [
@@ -53,6 +55,7 @@ import { CustomersService } from './customers/customers.service';
     HealthController,
     ProductsController,
     CustomersController,
+    TransactionsController,
   ],
   providers: [
     JwtStrategy,
@@ -62,6 +65,7 @@ import { CustomersService } from './customers/customers.service';
     SupportService,
     ProductsService,
     CustomersService,
+    TransactionsService,
   ],
 })
 export class AppModule implements NestModule {

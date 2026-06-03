@@ -1,5 +1,57 @@
 # CHANGELOG
 
+## 2026-06-03 — 2-BOSQICH: Tranzaksiya bo'limi
+
+### Qo'shildi
+
+**DB:**
+- `transactions` jadval: product_id, external_id, user_uid, data JSONB, created_at/updated_at
+- Indekslar: (product_id, created_at DESC), (product_id, user_uid)
+- Trigger: `trg_transactions_updated_at` — avtomatik updated_at
+- `infra/postgres/migrate_transactions.sql` — mavjud DBga xavfsiz qo'shish
+
+**Backend (chat-service):**
+- `GET /transactions` — ro'yxat (product izolyatsiya, pagination, filtr: sana, provider, type, debit_state, credit_state)
+- `GET /transactions?phone=...` — telefon bo'yicha qidiruv (users → customers → userUid zanjiri)
+- `GET /transactions?userUid=...` — mijoz userUid bo'yicha (chatdan o'tish uchun)
+- `GET /transactions/:id` — bitta tranzaksiya (product izolyatsiya tekshiruvi bilan)
+- `POST /transactions/upsert` — Nova transfer JSONB saqlash (product_id + external_id unikal)
+- Universal JSONB: har format (null/son/list/object) muammosiz saqlanadi
+- Product izolyatsiya: operator faqat o'z product tranzaksiyalarini ko'radi
+- SQL camelCase alias'lar: `created_at AS "createdAt"` va boshqalar
+- Traefik: `/api/v1/transactions` → chat-service route qo'shildi
+
+**Frontend (operator-panel):**
+- `TransactionsView.vue` — alohida page (MainLayout ichida)
+  - Nova jadval ko'rinishi (ID, user/telefon, debit/credit status badge, servis, summalar, sana)
+  - Qidiruv: telefon raqam bo'yicha
+  - Filtr panel: sana (dan/gacha), provider, type, debit holati, kredit holati
+  - Tranzaksiyaga bosish → o'ng panelda detal (asosiy maydonlar + "Barcha maydonlar" collapsible)
+  - Amallar menu (stub — Recredit, Refund, Resend — 3-bosqichda Nova API)
+  - "Mijoz bo'yicha filtr" banner (chatdan kelganda)
+- `api/transactions.ts` — list, getOne, upsert
+- `MainLayout.vue` — yangi tranzaksiya iconi (grid SVG, 5-chi icon)
+- Router: `/transactions` route qo'shildi
+- i18n uz.json + ru.json — `transactions.*` kalitlar (35 ta kalit)
+- `CustomerProfilePanel.vue` — "Tranzaksiyalarini ko'rish" tugmasi faol (oldin disabled edi)
+  - Bosish → `/transactions?userUid=<uid>` ga o'tadi, shu mijoz avtomatik filtrlangan
+
+**Test natijalari (brauzer, Playwright):**
+- Nav rail: 5 ta icon ✓
+- Tranzaksiyalar page: 6 ta yozuv ko'rinadi ✓
+- Provider filtr (uzcard) → 3 ta natija ✓
+- Reset → 6 ta qaytadi ✓
+- Row bosish → detal panel, barcha maydonlar toggle ✓
+- CustomerProfilePanel tugmasi → `/transactions?userUid=...` ✓
+- Chat/call regression yo'q ✓
+
+**Muhim texnik:**
+- Raw SQL JSONB query ($queryRawUnsafe) — Prisma JSONB nested filtr limitatsiyalari sababli
+- camelCase SQL alias: `created_at AS "createdAt"` va h.k. — frontend bilan moslik
+- Phone qidiruv: users → customers → userUid (real Nova data bilan ishlaydi)
+
+---
+
 ## 2026-06-03 — 1-BOSQICH: Mijoz profil paneli
 
 ### Qo'shildi

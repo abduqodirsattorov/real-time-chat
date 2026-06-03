@@ -67,7 +67,7 @@
 
 ## Keyingi mumkin ishlar (REJA.md dan)
 1. ~~1-BOSQICH: Mijoz profil paneli (Nova profile JSONB)~~ ✅ TUGALLANDI
-2. 2-BOSQICH: Tranzaksiya bo'limi + qidiruv + filtr
+2. ~~2-BOSQICH: Tranzaksiya bo'limi + qidiruv + filtr~~ ✅ TUGALLANDI
 3. 3-BOSQICH: Tranzaksiya detali + actionlar (Nova stub)
 4. 4-BOSQICH: Admin field/action config UI
 5. 5-BOSQICH: Nova API real integratsiya

@@ -40,6 +40,11 @@ export const router = createRouter({
           component: () => import('@/views/CallHistoryView.vue'),
         },
         {
+          path: 'transactions',
+          name: 'transactions',
+          component: () => import('@/views/TransactionsView.vue'),
+        },
+        {
           path: 'admin',
           component: () => import('@/views/admin/AdminLayout.vue'),
           meta: { adminOnly: true },

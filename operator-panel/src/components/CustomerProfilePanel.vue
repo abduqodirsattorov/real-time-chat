@@ -93,10 +93,13 @@
           </div>
         </div>
 
-        <!-- Transactions button (placeholder, 2-bosqich) -->
-        <button class="pp-txn-btn" disabled>
+        <!-- Transactions button -->
+        <button class="pp-txn-btn" @click="goToTransactions">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="3" y1="15" x2="21" y2="15"/>
+            <line x1="9" y1="9" x2="9" y2="21"/>
           </svg>
           {{ t('profile.transactions') }}
         </button>
@@ -109,6 +112,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { customersApi, type CustomerProfile } from '@/api/customers';
 
 const { t } = useI18n();
@@ -242,6 +246,18 @@ async function removeTag(tag: string) {
     const updated = await customersApi.update(customer.value.id, { tags });
     customer.value = { ...customer.value, tags: updated.tags };
   } catch {}
+}
+
+// ── Transactions nav ─────────────────────────────────────────────────────────
+const router = useRouter();
+
+function goToTransactions() {
+  const uid = customer.value?.externalUid ?? (customer.value?.profileData as any)?.uid;
+  if (uid) {
+    router.push({ path: '/transactions', query: { userUid: uid } });
+  } else {
+    router.push('/transactions');
+  }
 }
 </script>
 
@@ -474,13 +490,15 @@ async function removeTag(tag: string) {
   justify-content: center;
   gap: 6px;
   padding: 9px;
-  border: 1.5px dashed var(--c-border);
+  border: 1.5px solid var(--c-accent);
   border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--c-text-2);
+  background: var(--c-accent-bg);
+  color: var(--c-accent);
   font-size: 12px;
   font-weight: 500;
-  cursor: not-allowed;
-  opacity: 0.6;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
 }
+
+.pp-txn-btn:hover { opacity: 0.85; }
 </style>
