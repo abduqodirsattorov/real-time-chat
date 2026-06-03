@@ -252,13 +252,12 @@ async function removeTag(tag: string) {
 const router = useRouter();
 
 function goToTransactions() {
+  const phone = customer.value?.user?.phone ?? (customer.value?.profileData as any)?.phone;
   const uid = customer.value?.externalUid ?? (customer.value?.profileData as any)?.uid;
   if (uid) {
-    router.push({ path: '/transactions', query: { userUid: uid } });
+    router.push({ path: '/transactions', query: { userUid: uid, customerPhone: phone ?? uid } });
     return;
   }
-  // externalUid yo'q → telefon orqali qidirish
-  const phone = customer.value?.user?.phone ?? (customer.value?.profileData as any)?.phone;
   if (phone) {
     router.push({ path: '/transactions', query: { search: phone } });
     return;

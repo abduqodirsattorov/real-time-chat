@@ -113,8 +113,8 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
           </svg>
-          {{ t('transactions.filteredBy') }}: <strong>{{ userUidFilter }}</strong>
-          <button class="banner-clear" @click="userUidFilter = ''; doSearch()">×</button>
+          {{ t('transactions.filteredBy') }}: <strong>{{ customerPhoneLabel || userUidFilter }}</strong>
+          <button class="banner-clear" @click="userUidFilter = ''; customerPhoneLabel = ''; doSearch()">×</button>
         </div>
       </div>
 
@@ -366,6 +366,7 @@ const selectedIds = ref(new Set<string>());
 const searchVal = ref('');
 const showFilter = ref(false);
 const userUidFilter = ref('');
+const customerPhoneLabel = ref('');
 
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
 watch(searchVal, () => {
@@ -526,6 +527,7 @@ function resetFilters() {
   filters.value = { dateFrom: '', dateTo: '', provider: '', type: '', debitState: '', creditState: '', strana: '' };
   searchVal.value = '';
   userUidFilter.value = '';
+  customerPhoneLabel.value = '';
   page.value = 1;
   load();
 }
@@ -667,8 +669,10 @@ onMounted(() => {
   document.addEventListener('click', handleClickOutside);
   const uid = route.query.userUid as string;
   const search = route.query.search as string;
+  const phoneLabel = route.query.customerPhone as string;
   if (uid) userUidFilter.value = uid;
   if (search) searchVal.value = search;
+  if (phoneLabel) customerPhoneLabel.value = phoneLabel;
   if (uid || search) router.replace({ path: '/transactions' });
   load();
 });
