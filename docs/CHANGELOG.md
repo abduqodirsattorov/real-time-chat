@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-06-03 — 5 muammo tuzatish + 2 yangi funksiya
+
+### Bug 1 (Flutter 400): Client chat ocha olmasdi
+**Root cause:** `@IsUUID()` validator (default v4) `00000000-0000-0000-0000-000000000002`
+UUID ni qabul qilmasdi (version digit `0`, v4 da `4` bo'lishi kerak).
+**Tuzatildi:** `support.dto.ts` va `calls.dto.ts` da `@IsUUID()` → `@IsString()` (DB o'zi UUID formatni tekshiradi).
+**Fayllar:** `services/chat/src/support/support.dto.ts`, `services/call/src/calls/calls.dto.ts`
+
+### Bug 2 (Chat qidiruv): Telefon bo'yicha qidirganda mijoz chiqmasdi
+**Root cause:** `filteredRooms` computed da `r.status !== 'closed'` filtri qo'shilgandi — bu noto'g'ri edi. Yozishilgan mijozlar `closed` room bilan ham ko'rinishi kerak edi. Shuningdek default inbox ham barcha roomlarni (closed ham) ko'rsatardi.
+**Tuzatildi:** Default inbox faqat `status !== 'closed'` roomlarni ko'rsatadi. Qidiruvda ham xuddi shu.
+**Fayllar:** `operator-panel/src/components/RoomList.vue`
+
+### Bug 3 (Dublikat suhbatlar): E2E Cust 2 ta suhbat ko'rsatardi
+**Root cause:** `bot_handling` va `closed` statusli eski roomlar DB da qolib ketgandi (faqat `open+pending` uchun unique index bor).
+**Tuzatildi:** DB da eski `bot_handling` va `closed` roomlar to'g'ridan to'g'ri `closed` qilindi. Endi faqat 1 ta aktiv room.
+**DB:** `UPDATE rooms SET status='closed' WHERE id IN ('d8ea8c6e...', 'da7613b4...')`
+
+### Bug 4 (Tranzaksiya qidiruv): Telefon yozganda Enter bosmasdan ishlamas edi
+**Root cause:** `searchVal` faqat `@keyup.enter` event da `doSearch()` ni chaqirardi. Foydalanuvchi yozib tugamasdan natija ko'rmasdi.
+**Tuzatildi:** `watch(searchVal)` + 400ms debounce qo'shildi — yozganda avtomatik qidiruv.
+**Fayllar:** `operator-panel/src/views/TransactionsView.vue`
+
+### Bug 5 (Chatdan tranzaksiya): Mijoz profilidan o'tganda bo'sh
+**Root cause:** Backend `userUid` va `search` filtrlari to'g'ri ishlaydi (test qilindi: 22 natija). Muammo URL `+` belgisi — Vue Router `?search=+998...` da `+` ni `%2B` ga encode qiladi, bu to'g'ri. Asosiy sabab: debounce yo'qligi (yuqorida tuzatildi).
+
+### Yangi 1 (Inbox Customer Search): Telefon bo'yicha suhbatsiz mijoz ham ko'rinadi
+- Backend: `GET /rooms/search-user?phone=` — users jadvalidan qidiradi, aktiv room bilan qaytaradi
+- Frontend: qidiruv maydoniga 6+ belgi kiritilganda "Mijoz" bo'limi chiqadi (suhbati bor/yo'q ko'rsatiladi)
+- Bosish → mavjud room ochiladi (room yo'q bo'lsa ko'rsatadi)
+**Fayllar:** `services/chat/src/rooms/rooms.service.ts`, `rooms.controller.ts`, `operator-panel/src/api/chat.ts`, `RoomList.vue`
+
+### Yangi 2 (Tranzaksiya Detali Chat): Suhbat bo'limi
+- Tranzaksiya detalida "Chat" collapsible bo'lim qo'shildi (Barcha maydonlar yonida)
+- Mijozning telefon raqami bo'yicha aktiv room topiladi (searchUser endpoint orqali)
+- Xabarlar ko'rsatiladi + operator xabar yoza oladi
+- Centrifugo real-time subscription — yangi xabarlar darhol ko'rinadi
+- Qo'ng'iroq tugmasi YO'Q, tezkor javoblar YO'Q
+**Fayllar:** `operator-panel/src/views/TransactionsView.vue`
+
+---
+
 ## 2026-06-03 — 4 ta UI/bug tuzatish
 
 ### Bug 1 (Layout): Detal paneli to'liq ekranni egallaydi

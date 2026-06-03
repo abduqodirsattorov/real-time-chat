@@ -7,7 +7,7 @@ export class InitiateCallDto {
   @IsOptional() @IsString()
   subject?: string;
 
-  @IsOptional() @IsUUID()
+  @IsOptional() @IsString()
   productId?: string;
 }
 

@@ -4,7 +4,13 @@
       "Bash(docker-compose up *)",
       "Bash(curl -s http://localhost:3002/healthz)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(docker compose *)",
+      "Bash(curl -s -X POST http://localhost/api/v1/auth/email-login -H \"Content-Type: application/json\" -d '{\"email\":\"admin@pusher.uz\",\"password\":\"Admin12345\"}')",
+      "Bash(npm run *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(curl -s -X POST http://localhost/api/v1/auth/otp/send -H \"Content-Type: application/json\" -d '{\"phone\":\"+998900000001\"}')",
+      "Bash(curl -s -X POST http://localhost/api/v1/auth/otp/verify -H \"Content-Type: application/json\" -d '{\"phone\":\"+998900000001\",\"code\":\"954232\"}')"
     ]
   }
 }

@@ -287,6 +287,44 @@
           </div>
         </div>
 
+        <!-- Chat (collapsible) -->
+        <div class="detail-section">
+          <button class="section-toggle" @click="openTxChat">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              :style="{ transform: showTxChat ? 'rotate(90deg)' : '' }">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+            Chat
+          </button>
+          <div v-if="showTxChat" class="tx-chat-wrap">
+            <div v-if="txChatLoading" class="tx-chat-loading">Yuklanmoqda...</div>
+            <div v-else-if="!txChatRoomId" class="tx-chat-loading" style="color:#999">Suhbat topilmadi</div>
+            <template v-else>
+              <div class="tx-chat-messages" ref="txChatRef">
+                <div v-if="txChatMessages.length === 0" class="tx-chat-empty">Xabarlar yo'q</div>
+                <div v-for="msg in txChatMessages" :key="msg.id" class="tx-msg">
+                  <span class="tx-msg-sender">{{ msg.senderId.slice(0, 6) }}</span>
+                  <span class="tx-msg-text">{{ msg.content }}</span>
+                  <span class="tx-msg-time">{{ new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
+                </div>
+              </div>
+              <div class="tx-chat-input-row">
+                <input
+                  v-model="txChatMsg"
+                  class="tx-chat-input"
+                  placeholder="Xabar yozing..."
+                  @keyup.enter="sendTxMsg"
+                />
+                <button class="tx-chat-send" @click="sendTxMsg" :disabled="!txChatMsg.trim()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -294,10 +332,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { transactionsApi, type Transaction } from '@/api/transactions';
+import { chatApi, type Message } from '@/api/chat';
+import { useCentrifugeStore } from '@/stores/centrifuge';
 import {
   TX_PROVIDERS, TX_TYPES, TX_DEBIT_STATES, TX_CREDIT_STATES, TX_STRANAS,
   TX_ACTIONS, TX_BULK_ACTIONS,
@@ -326,6 +366,12 @@ const selectedIds = ref(new Set<string>());
 const searchVal = ref('');
 const showFilter = ref(false);
 const userUidFilter = ref('');
+
+let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+watch(searchVal, () => {
+  if (searchDebounce) clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => { page.value = 1; load(); }, 400);
+});
 
 const showBulkMenu = ref(false);
 const showActionsMenu = ref(false);
@@ -563,6 +609,58 @@ function handleClickOutside(e: MouseEvent) {
   if (showSelectPopup.value && hdrCheckRef.value && !hdrCheckRef.value.contains(e.target as Node)) {
     showSelectPopup.value = false;
   }
+}
+
+// ── Transaction chat panel ────────────────────────────────────────────────────
+const centrifuge = useCentrifugeStore();
+const showTxChat = ref(false);
+const txChatRoomId = ref<string | null>(null);
+const txChatMessages = ref<Message[]>([]);
+const txChatLoading = ref(false);
+const txChatMsg = ref('');
+const txChatRef = ref<HTMLElement | null>(null);
+
+watch(selectedTx, () => {
+  showTxChat.value = false;
+  txChatRoomId.value = null;
+  txChatMessages.value = [];
+});
+
+async function openTxChat() {
+  if (!selectedTx.value) return;
+  showTxChat.value = !showTxChat.value;
+  if (!showTxChat.value) return;
+  if (txChatRoomId.value) return; // already loaded
+  txChatLoading.value = true;
+  try {
+    const phone = (selectedTx.value.data as any)?.phone as string | undefined;
+    if (!phone) { txChatLoading.value = false; return; }
+    const res = await chatApi.searchUser(phone);
+    if (!res?.room) { txChatLoading.value = false; return; }
+    txChatRoomId.value = res.room.id;
+    const msgs = await chatApi.getMessages(res.room.id, { limit: 50 });
+    txChatMessages.value = msgs.items.slice().reverse();
+    centrifuge.subscribe(`chat:room#${res.room.id}`, (evt: any) => {
+      if (evt.type === 'message.new' && evt.message) {
+        txChatMessages.value.push(evt.message);
+        setTimeout(() => txChatRef.value?.scrollTo({ top: txChatRef.value.scrollHeight, behavior: 'smooth' }), 50);
+      }
+    });
+    setTimeout(() => txChatRef.value?.scrollTo({ top: txChatRef.value.scrollHeight }), 100);
+  } catch { /* no-op */ } finally {
+    txChatLoading.value = false;
+  }
+}
+
+async function sendTxMsg() {
+  if (!txChatRoomId.value || !txChatMsg.value.trim()) return;
+  const text = txChatMsg.value.trim();
+  txChatMsg.value = '';
+  try {
+    const msg = await chatApi.sendMessage(txChatRoomId.value, text);
+    txChatMessages.value.push(msg);
+    setTimeout(() => txChatRef.value?.scrollTo({ top: txChatRef.value.scrollHeight, behavior: 'smooth' }), 50);
+  } catch { /* no-op */ }
 }
 
 onMounted(() => {
@@ -1178,4 +1276,70 @@ onUnmounted(() => {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Tx Chat Panel ── */
+.tx-chat-wrap {
+  margin-top: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+}
+.tx-chat-loading { padding: 12px; font-size: 12px; color: var(--c-text-3); }
+.tx-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--c-surface);
+  min-height: 80px;
+}
+.tx-chat-empty { font-size: 12px; color: var(--c-text-3); text-align: center; padding: 20px 0; }
+.tx-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tx-msg-sender { font-size: 10px; font-weight: 700; color: var(--c-text-3); }
+.tx-msg-text {
+  font-size: 13px;
+  color: var(--c-text);
+  background: #fff;
+  border-radius: var(--r-md);
+  padding: 5px 8px;
+  max-width: 90%;
+  word-break: break-word;
+}
+.tx-msg-time { font-size: 10px; color: var(--c-text-3); align-self: flex-end; margin-top: 1px; }
+.tx-chat-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--c-border);
+  background: #fff;
+}
+.tx-chat-input {
+  flex: 1;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+}
+.tx-chat-input:focus { border-color: var(--c-accent); }
+.tx-chat-send {
+  width: 32px; height: 32px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--c-accent);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.tx-chat-send:disabled { background: var(--c-border); cursor: default; }
 </style>

@@ -83,6 +83,31 @@ export class RoomsService {
     return { items: enriched, nextCursor, hasMore };
   }
 
+  // ── Search user by phone (for inbox search feature) ─────────────────────────
+
+  async searchUser(user: JwtUser, phone: string, productId?: string) {
+    const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
+    if (!isOperator) throw new ForbiddenException();
+
+    const found = await this.prisma.user.findFirst({
+      where: { phone: { contains: phone, mode: 'insensitive' } },
+      select: { id: true, fullName: true, phone: true },
+    });
+    if (!found) return null;
+
+    const room = await this.prisma.room.findFirst({
+      where: {
+        customerId: found.id,
+        status: { in: ['open', 'pending', 'bot_handling'] as any },
+        ...(productId ? { productId } : {}),
+      },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true, status: true },
+    });
+
+    return { user: found, room: room ?? null };
+  }
+
   // ── Create room ──────────────────────────────────────────────────────────────
 
   async create(user: JwtUser, dto: CreateRoomDto, productId?: string) {

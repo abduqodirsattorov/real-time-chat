@@ -67,4 +67,8 @@ export const chatApi = {
   closeRoom(roomId: string) {
     return api.post(`/rooms/${roomId}/close`);
   },
+
+  searchUser(phone: string): Promise<{ user: { id: string; fullName: string | null; phone: string }; room: { id: string; status: string } | null } | null> {
+    return api.get('/rooms/search-user', { params: { phone } }).then((r) => r.data);
+  },
 };

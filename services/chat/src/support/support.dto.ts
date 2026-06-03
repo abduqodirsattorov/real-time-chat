@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsArray, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsArray } from 'class-validator';
 
 export class SupportRequestDto {
   @IsOptional()
@@ -11,6 +11,6 @@ export class SupportRequestDto {
   requiredSkills?: string[];
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   productId?: string;
 }

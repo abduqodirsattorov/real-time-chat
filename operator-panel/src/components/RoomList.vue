@@ -110,19 +110,43 @@
         </div>
       </div>
 
-      <div v-if="filteredRooms.length === 0" class="rl-empty">{{ t('chat.noRooms') }}</div>
+      <div v-if="filteredRooms.length === 0 && !search" class="rl-empty">{{ t('chat.noRooms') }}</div>
+    </div>
+
+    <!-- Customer search result (phone search) -->
+    <div v-if="search.trim().length >= 6" class="rl-customer-section">
+      <div v-if="customerSearchResult === 'loading'" class="rl-customer-loading">...</div>
+      <template v-else-if="customerSearchResult && customerSearchResult !== 'none'">
+        <div class="rl-section-label">Mijoz</div>
+        <div class="room-item" @click="openCustomerRoom(customerSearchResult as any)">
+          <div class="room-av" :style="{ background: '#EDE8FF' }">
+            {{ ((customerSearchResult as any).user.fullName ?? (customerSearchResult as any).user.phone).slice(0, 2).toUpperCase() }}
+          </div>
+          <div class="room-info">
+            <div class="room-row1">
+              <span class="room-name">{{ (customerSearchResult as any).user.fullName ?? (customerSearchResult as any).user.phone }}</span>
+              <span v-if="(customerSearchResult as any).room" class="room-check" style="font-size:11px;color:#3B6FF5">Aktiv</span>
+              <span v-else style="font-size:10px;color:#999">Suhbat yo'q</span>
+            </div>
+            <div class="room-row2">
+              <span class="room-preview">{{ (customerSearchResult as any).user.phone }}</span>
+            </div>
+          </div>
+        </div>
+      </template>
+      <div v-else-if="customerSearchResult === null && search.trim().length >= 6" class="rl-customer-loading" style="color:#999">Mijoz topilmadi</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useRoomsStore } from '@/stores/rooms';
 import { useCallsStore } from '@/stores/calls';
 import { useAuthStore } from '@/stores/auth';
-import type { Room } from '@/api/chat';
+import { chatApi, type Room } from '@/api/chat';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -152,7 +176,6 @@ function stopTimer() {
 }
 
 // Watch active call changes (start/stop timer)
-import { watch } from 'vue';
 watch(() => calls.activeCall, (val) => {
   if (val) startTimer();
   else { stopTimer(); callDuration.value = '0:00'; }
@@ -214,14 +237,39 @@ function lastPreview(roomId: string, status: string): string {
 
 const filteredRooms = computed(() => {
   const q = search.value.toLowerCase().trim();
-  if (!q) return rooms.rooms;
-  // Search: exclude closed rooms so duplicates from old test data don't confuse
+  if (!q) return rooms.rooms.filter(r => r.status !== 'closed');
   return rooms.rooms.filter((r) =>
     r.status !== 'closed' &&
     (roomLabel(r).toLowerCase().includes(q) ||
      (r.customerPhone ?? '').toLowerCase().includes(q)),
   );
 });
+
+// Customer search (phone search — no active room case)
+const customerSearchResult = ref<{ user: { id: string; fullName: string | null; phone: string }; room: { id: string; status: string } | null } | null | 'loading' | 'none'>('none');
+let customerSearchTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(search, (val) => {
+  if (customerSearchTimer) clearTimeout(customerSearchTimer);
+  const q = val.trim();
+  if (!q || q.length < 6) { customerSearchResult.value = 'none'; return; }
+  customerSearchTimer = setTimeout(async () => {
+    customerSearchResult.value = 'loading';
+    try {
+      const res = await chatApi.searchUser(q);
+      customerSearchResult.value = res ?? null;
+    } catch {
+      customerSearchResult.value = null;
+    }
+  }, 500);
+});
+
+async function openCustomerRoom(result: { user: { id: string; fullName: string | null; phone: string }; room: { id: string; status: string } | null }) {
+  if (result.room) {
+    await rooms.selectRoom(result.room.id);
+    router.push(`/chat/${result.room.id}`);
+  }
+}
 
 async function selectRoom(roomId: string) {
   await rooms.selectRoom(roomId);
@@ -433,4 +481,8 @@ function formatTime(iso: string) {
 }
 
 .rl-empty { padding: 40px 20px; text-align: center; color: var(--c-text-3); font-size: 13px; }
+
+.rl-customer-section { border-top: 1px solid var(--c-border); padding: 4px 0; }
+.rl-section-label { padding: 6px 16px 2px; font-size: 11px; font-weight: 700; color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.rl-customer-loading { padding: 8px 16px; font-size: 12px; color: var(--c-text-3); }
 </style>

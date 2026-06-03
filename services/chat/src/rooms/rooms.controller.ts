@@ -32,6 +32,15 @@ export class RoomsController {
     return this.rooms.create(user, dto, productId);
   }
 
+  @Get('search-user')
+  searchUser(
+    @CurrentUser() user: JwtUser,
+    @Query('phone') phone: string,
+    @Headers('x-product-id') productId?: string,
+  ) {
+    return this.rooms.searchUser(user, phone, productId);
+  }
+
   @Get(':id')
   getOne(@CurrentUser() user: JwtUser, @Param('id') id: string) {
     return this.rooms.getOne(user, id);
