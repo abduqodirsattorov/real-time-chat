@@ -8,6 +8,8 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  const productId = localStorage.getItem('selected_product_id');
+  if (productId) config.headers['X-Product-Id'] = productId;
   return config;
 });
 

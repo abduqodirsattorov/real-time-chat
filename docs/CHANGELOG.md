@@ -1,5 +1,183 @@
 # CHANGELOG
 
+## 2026-06-03 — Call history product izolyatsiya bugfix
+
+### Root cause (3 ta muammo birgalikda)
+
+**1. Null product_id calllar (asosiy sabab)**
+Migration `migrate_multitenancy.sql` faqat mavjud calllarni default productga o'tkazdi.
+Lekin call-service rebuild qilinguncha (productId fieldi qo'shilguncha) qilingan yangi calllar
+`product_id = NULL` bilan saqlandi. `NULL != 'yubor_id'` bo'lgani uchun ular Yubor filterida
+ham, Default filterida ham to'g'ri ishlardi — lekin header bo'lmasa hammasi ko'rinardi.
+
+**Tuzatildi (DB):**
+```sql
+UPDATE calls SET product_id = '00000000-0000-0000-0000-000000000002' WHERE product_id IS NULL;
+```
+4 ta NULL call default productga o'tkazildi.
+
+**2. Outbound call productId saqlamadi**
+`POST /calls/outbound` operator `current_product_id` ni callga saqlamardi.
+
+**Tuzatildi (`calls.service.ts`):**
+Outbound call yaratilganda `opState.currentProductId` dan oladi → `productId` saqlanadi.
+
+**3. Backend filter to'g'ri ishlaydi (emas muammo)**
+`GET /calls` + `X-Product-Id: Yubor` → 0 ta call (to'g'ri).
+`GET /calls` + `X-Product-Id: Default` → 48 ta call (to'g'ri).
+Frontend interceptor X-Product-Id header yuboradi (browser logdan tasdiqlandi).
+
+### Diagnostika natijalari
+- azim azim (b837b2a9) calllar: 48 ta (hammasi Default product, NULL yo'q) ✓
+- Backend Yubor filter: 0 call qaytaradi ✓
+- Backend Default filter: to'g'ri call qaytaradi ✓
+- Vite devserver hot-reload bo'lgan bo'lishi mumkin — brauzerde hard refresh kerak bo'lishi mumkin
+
+### Test tartibi
+1. Brauzrni hard refresh (Ctrl+Shift+R)
+2. Yubor productiga kir
+3. QO'NG'IROQLAR → BO'SH bo'lishi kerak ✓
+4. Asosiy → 48+ call ko'rinishi kerak ✓
+
+---
+
+## 2026-06-02 — Admin layout fix + Operator-product ruxsati
+
+### MUAMMO 1 tuzatildi: Admin bo'limlari panel ichida
+
+**Sabab:** Admin bo'limlari (`/admin/users`, `/admin/products`) MainLayout ichida
+`<router-view />` da to'g'ri render bo'lar edi, lekin alohida sahifa ko'rinishida edi.
+
+**Tuzatildi:**
+- `AdminLayout.vue` (yangi) — 2 panel layout: chap sub-nav (Foydalanuvchilar | Productlar) + o'ng content
+- Router restructure: admin routes `AdminLayout` ostiga nested (MainLayout → AdminLayout → AdminUsersView/AdminProductsView)
+- MainLayout: bitta "Admin" nav icon (Users + Products alohida emas)
+
+### Yangi funksiya: Operator ↔ Product ruxsati
+
+**DB:**
+- `operator_products (user_id, product_id)` junction jadval
+- Migration: `infra/postgres/migrate_operator_products.sql`
+- Mavjud 11 operator → default productga kiritildi
+
+**Backend (auth-service):**
+- `POST /admin/users` → `productIds[]` qabul qiladi
+- `PATCH /admin/users/:id` → `productIds[]` yangilaydi (to'liq replace)
+- `GET /admin/users` + `GET /admin/users/:id` → `productIds[]` qaytaradi
+- `OperatorProduct` model Prisma schemaga qo'shildi
+
+**Backend (chat-service):**
+- `GET /products`:
+  - Admin/supervisor → hamma (faol+nofaol)
+  - Operator → faqat `operator_products` bo'yicha ruxsat etilgan (faol)
+  - Boshqalar → faqat faollar
+
+**Frontend:**
+- `AdminUsersView.vue` — yangi operator yaratish modalida product checkboxlar
+- `AdminUserDetailView.vue` — yangi "Productlar" tab: checkbox bilan ruxsatlarni o'zgartirish
+- `AdminUserDetailView.vue` — operator bo'lmagan (admin) uchun Products tab yashiriladi
+- `api/admin.ts` — `productIds` qo'shildi
+
+**Test natijalari:**
+- `PATCH /admin/users/:id { productIds: [] }` → ruxsat tozalandi ✓
+- Admin GET /products → 2 (faol+nofaol) ✓
+- Operator GET /products → faqat ruxsat etilganlari ✓
+
+---
+
+## 2026-06-02 — Admin panel Product CRUD
+
+### Qo'shildi
+
+**Backend (chat-service):**
+- `DELETE /products/:id` — soft delete (is_active=false)
+- `GET /products` — admin uchun hammasi (faol+nofaol), boshqalar uchun faqat faollar
+- `PATCH /products/:id` — name, branding, settings, isActive tahrirlash
+- slug unique tekshirish (POST da ConflictException)
+- UpdateProductDto bilan to'liq validatsiya
+
+**Frontend (operator-panel):**
+- `AdminProductsView.vue` — product ro'yxati jadval (nom, slug, rang, holat)
+- Nav iconı: admin sidebar'da "Productlar" bo'limi (monitor icon)
+- Modal: yangi product yaratish (nom, slug, display name, rang picker, logo URL)
+- Modal: tahrirlash (slug o'zgartirib bo'lmaydi, qolganlar)
+- Soft delete + confirm modal
+- Product picker: faqat faol productlar ko'rinadi
+- `api/products.ts` to'ldirildi (create, update, remove, listAll)
+- i18n uz/ru: product CRUD uchun barcha kalitlar
+- Route: `/admin/products` → AdminProductsView
+
+**Test natijalari:**
+- `DELETE /products/:id` → is_active=false ✓
+- `GET /products` (admin) → faol + nofaol ✓
+- `PATCH /products/:id` → branding yangilandi ✓
+- slug unique conflict → 409 ✓
+
+---
+
+## 2026-06-02 — 0-BOSQICH: Multi-tenancy poydevori
+
+### Qo'shildi
+
+**DB:**
+- `products` jadval (tenant): id, name, slug, branding JSONB, settings JSONB, is_active
+- `rooms.product_id` → products FK
+- `calls.product_id` → products FK
+- `operator_states.current_product_id` → operator qaysi productda ishlayotgani
+- Migration script: `infra/postgres/migrate_multitenancy.sql` (mavjud data → default product)
+- Default product: `00000000-0000-0000-0000-000000000002` ("Asosiy", slug="default")
+
+**Backend:**
+- `GET /products` — aktiv productlar ro'yxati (chat-service)
+- `POST /products` — yangi product yaratish (admin only)
+- `PATCH /products/:id` — branding/settings yangilash (admin only)
+- `PATCH /operator/product { productId }` — operator product tanlaydi (presence-service)
+- `GET /rooms` → `X-Product-Id` header bo'yicha filtrlash (operator izolyatsiya)
+- `POST /support/request` → `productId` body'da → room'ga saqlash + ACD product filter
+- `POST /calls/initiate` → `productId` body'da → call'ga saqlash + ACD product filter
+- ACD (chat + call): `currentProductId` bo'yicha operator-customer moslashtirish
+- Queue processor: product filter bilan operator qidirish
+
+**Frontend (operator-panel):**
+- `ProductPickerView.vue` — login → product tanlash ekrani
+- `stores/product.ts` — selectedProductId, loadProducts, selectProduct
+- `api/products.ts` — products API
+- `api/client.ts` — `X-Product-Id` header har so'rovga qo'shiladi (localStorage dan)
+- Router: login → product-picker (agar product tanlanmagan) → chat
+- MainLayout: qayta kirish sessiyasida product tanlangan bo'lsa setStatus('available') chaqiriladi
+- Logout: localStorage.clear() → product tozalanadi
+
+**Infra:**
+- Traefik: `/api/v1/products` → chat-service route qo'shildi
+- Traefik CORS: `X-Product-Id` header qo'shildi
+
+### Izolyatsiya mexanizmi
+
+```
+Mijoz (Flutter) → POST /support/request { productId: "A" }
+  → room.product_id = A
+  → ACD: operator_states.current_product_id = A bo'lgan operator
+
+Operator (Vue) → product-picker → selects "A" 
+  → PATCH /operator/product { productId: "A" }
+  → GET /rooms (X-Product-Id: A) → faqat A rooms
+  → GET /calls (X-Product-Id: A) → faqat A calls
+```
+
+### Test natijalari (curl)
+
+- `GET /products` → `[{ "Asosiy", "#3B6FF5" }]` ✓
+- `POST /products` → B product yaratildi ✓
+- `PATCH /operator/product` → currentProductId yangilandi ✓
+- `GET /rooms (X-Product-Id: A)` → 12 room ✓
+- `GET /rooms (X-Product-Id: B)` → 0 room (izolyatsiya) ✓
+
+### Mavjud funksiya regressiya yo'q
+- Mavjud 12 room, 172 call → default product ga o'tkazildi
+- Chat, call, transfer, recording — o'zgarmadi
+
+---
+
 ## 2026-06-01 — Queue disappearing fix
 
 ### Bug: Navbatdagi call ~10 sekundda avtomatik yo'qoladi

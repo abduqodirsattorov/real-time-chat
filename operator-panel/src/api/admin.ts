@@ -7,6 +7,7 @@ export interface AdminUser {
   role: string;
   status: string;
   createdAt: string;
+  productIds?: string[];
 }
 
 export interface AdminUsersRes {
@@ -27,6 +28,7 @@ export const adminApi = {
     email: string;
     password: string;
     role?: string;
+    productIds?: string[];
   }): Promise<AdminUser> {
     return api.post('/admin/users', data).then((r) => r.data);
   },
@@ -35,7 +37,11 @@ export const adminApi = {
     return api.get(`/admin/users/${id}`).then((r) => r.data);
   },
 
-  updateUser(id: string, data: { firstName?: string; lastName?: string }): Promise<AdminUser> {
+  updateUser(id: string, data: {
+    firstName?: string;
+    lastName?: string;
+    productIds?: string[];
+  }): Promise<AdminUser> {
     return api.patch(`/admin/users/${id}`, data).then((r) => r.data);
   },
 

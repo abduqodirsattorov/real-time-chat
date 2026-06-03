@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Body, Param, Query,
+  Controller, Post, Get, Body, Param, Query, Headers,
   UseGuards, HttpCode, HttpStatus, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { CallsService } from './calls.service';
@@ -40,8 +40,9 @@ export class CallsController {
     @CurrentUser() user: JwtUser,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
+    @Headers('x-product-id') productId?: string,
   ) {
-    return this.calls.getCalls(user, limit, offset);
+    return this.calls.getCalls(user, limit, offset, productId);
   }
 
   @Get(':id')

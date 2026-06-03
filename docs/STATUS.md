@@ -11,6 +11,17 @@
   - Transfer (cold/warm), recording (consent bilan)
 - Admin panel (/admin): operator yaratish, email+parol login, parol o'zgartirish
 - Notification, Meilisearch search, bot (FAQ)
+- **Multi-tenancy (0-BOSQICH):** products, izolyatsiya, product picker ekrani
+
+## Multi-tenancy (YANGI)
+- `products` jadval: branding JSONB (logo, rang, nom)
+- `rooms.product_id` + `calls.product_id` → izolyatsiya
+- `operator_states.current_product_id` → ACD product routing
+- Login → product tanlash ekranı → dashboard
+- X-Product-Id header → barcha API so'rovlarda
+- ACD: mijoz productId → operator currentProductId moslashtirish
+- Default product: "Asosiy" (#3B6FF5)
+- API: GET/POST /products, PATCH /operator/product
 
 ## Arxitektura
 - 8 backend mikroservis (NestJS): auth:3001, chat:3002, presence:3003,
@@ -34,15 +45,17 @@
 - Operator OTP: `+998900000002` (Telefon tab)
 - Mijoz: `+998900000001` (Flutter)
 - OTP olish: `docker compose logs auth-service | Select-String OTP`
-- **MUHIM:** operator "Mavjud" (Available) qilishi kerak, aks holda call kelmaydi
+- **MUHIM:** login → product tanlash ekrani → "Davom etish" → "Mavjud" avtomatik
 
 ## Muhim texnik eslatmalar
 - Centrifugo kanal: `chat:room#<id>`, `chat:user#<id>` (# belgi bilan)
 - `operator_states` jadval ustuni: `user_id` (`operator_id` EMAS!)
+- `operator_states.current_product_id` — operator qaysi productda (ACD uchun)
 - Mijoz: OTP login. Operator/admin: OTP yoki email+parol
 - Prisma schema `init.sql` bilan AYNI bo'lishi shart
 - Muhit: Windows + Docker Desktop + WSL2, PowerShell
 - PowerShell'da `grep` o'rniga `Select-String` ishlatiladi
+- X-Product-Id header: localStorage['selected_product_id'] → axios interceptor
 
 ## Tuzatilgan regressiyalar (tarix CHANGELOG.md da)
 - Status flapping (operator available→offline 10s avtomatik)
@@ -52,11 +65,12 @@
 - Call lifecycle: navbat timeout (10s→barqaror), sinxron tugatish
 - Queue processor `onCall` tekshirmasdi → queued call 15s da yo'qolardi
 
-## Keyingi mumkin ishlar
-1. Admin panel to'ldirish: statistika/KPI dashboard, sozlamalar (bot, recording, til), monitoring
-2. Production: VPS/server, HTTPS, domen, `change_me` secretlarni almashtirish
-3. Android: CallKit, background push, real FCM/APNs (hozir faqat web)
-4. Yuklama testi (100K user — Phase 11), keyin ACD optimization (DB→Redis ZSET)
+## Keyingi mumkin ishlar (REJA.md dan)
+1. 1-BOSQICH: Mijoz profil paneli (Nova profile JSONB)
+2. 2-BOSQICH: Tranzaksiya bo'limi + qidiruv + filtr
+3. 3-BOSQICH: Tranzaksiya detali + actionlar (Nova stub)
+4. 4-BOSQICH: Admin field/action config UI
+5. 5-BOSQICH: Nova API real integratsiya
 
 ## Yangi chat ochganda
 Bu faylni o'qib boshlang: `@docs/STATUS.md`

@@ -56,9 +56,22 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  devices      Device[]
+  devices          Device[]
+  operatorProducts OperatorProduct[]
 
   @@map("users")
+}
+
+model OperatorProduct {
+  userId    String   @map("user_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([userId])
+  @@map("operator_products")
 }
 
 model Device {

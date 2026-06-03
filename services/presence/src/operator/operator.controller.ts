@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Patch, Get, Body, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { OperatorService } from './operator.service';
@@ -13,6 +13,11 @@ export class OperatorController {
   @Post('status')
   updateStatus(@CurrentUser() user: JwtUser, @Body() dto: UpdateStatusDto) {
     return this.operator.updateStatus(user, dto);
+  }
+
+  @Patch('product')
+  selectProduct(@CurrentUser() user: JwtUser, @Body() body: { productId: string }) {
+    return this.operator.selectProduct(user, body.productId);
   }
 
   @Get('online')

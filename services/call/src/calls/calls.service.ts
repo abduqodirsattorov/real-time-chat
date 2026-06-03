@@ -34,6 +34,7 @@ export class CallsService {
 
   async initiateCall(user: JwtUser, dto: InitiateCallDto) {
     const roomName = `call-${Date.now()}-${user.sub.slice(0, 8)}`;
+    const productId = dto.productId ?? null;
 
     const call = await this.prisma.call.create({
       data: {
@@ -41,13 +42,14 @@ export class CallsService {
         direction: 'inbound',
         status: 'initiating',
         livekitRoom: roomName,
-        metadata: { subject: dto.subject ?? null, skills: dto.requiredSkills ?? [] },
+        ...(productId ? { productId } : {}),
+        metadata: { subject: dto.subject ?? null, skills: dto.requiredSkills ?? [], productId: productId ?? null },
       },
     });
 
     await this.livekit.createRoom(roomName);
 
-    const operator = await this.findAvailableOperator(user.locale, dto.requiredSkills ?? []);
+    const operator = await this.findAvailableOperator(user.locale, dto.requiredSkills ?? [], productId);
 
     if (!operator) {
       await this.prisma.call.update({ where: { id: call.id }, data: { status: 'queued' } });
@@ -225,6 +227,8 @@ export class CallsService {
         direction: 'outbound',
         status: 'ringing',
         livekitRoom: roomName,
+        // outbound: operator's current product
+        ...(opState?.currentProductId ? { productId: opState.currentProductId } : {}),
         metadata: { subject: dto.subject ?? null },
       },
     });
@@ -525,10 +529,11 @@ export class CallsService {
     return call;
   }
 
-  async getCalls(user: JwtUser, limit = 20, offset = 0) {
+  async getCalls(user: JwtUser, limit = 20, offset = 0, productId?: string) {
+    const productFilter = productId ? { productId } : {};
     const where = OPERATOR_ROLES.has(user.role)
-      ? { OR: [{ callerId: user.sub }, { calleeId: user.sub }] }
-      : { callerId: user.sub };
+      ? { OR: [{ callerId: user.sub }, { calleeId: user.sub }], ...productFilter }
+      : { callerId: user.sub, ...productFilter };
 
     const [calls, total] = await Promise.all([
       this.prisma.call.findMany({ where, orderBy: { initiatedAt: 'desc' }, take: limit, skip: offset }),
@@ -565,12 +570,17 @@ export class CallsService {
     return call;
   }
 
-  private async findAvailableOperator(locale: string, requiredSkills: string[]) {
+  private async findAvailableOperator(
+    locale: string,
+    requiredSkills: string[],
+    productId: string | null,
+  ) {
     const candidates = await this.prisma.operatorState.findMany({
       where: {
         status: 'available' as any,
         onCall: false,
         languages: { has: locale as any },
+        ...(productId ? { currentProductId: productId } : {}),
         ...(requiredSkills.length > 0 ? { skills: { hasSome: requiredSkills } } : {}),
       },
       orderBy: { activeChats: 'asc' },

@@ -9,4 +9,8 @@ export class SupportRequestDto {
   @IsArray()
   @IsString({ each: true })
   requiredSkills?: string[];
+
+  @IsOptional()
+  @IsUUID()
+  productId?: string;
 }

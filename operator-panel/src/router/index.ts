@@ -11,6 +11,12 @@ export const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/product-picker',
+      name: 'product-picker',
+      component: () => import('@/views/ProductPickerView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/',
       component: () => import('@/views/MainLayout.vue'),
       children: [
@@ -35,20 +41,26 @@ export const router = createRouter({
         },
         {
           path: 'admin',
-          redirect: '/admin/users',
+          component: () => import('@/views/admin/AdminLayout.vue'),
           meta: { adminOnly: true },
-        },
-        {
-          path: 'admin/users',
-          name: 'admin-users',
-          component: () => import('@/views/admin/AdminUsersView.vue'),
-          meta: { adminOnly: true },
-        },
-        {
-          path: 'admin/users/:id',
-          name: 'admin-user-detail',
-          component: () => import('@/views/admin/AdminUserDetailView.vue'),
-          meta: { adminOnly: true },
+          children: [
+            { path: '', redirect: '/admin/users' },
+            {
+              path: 'users',
+              name: 'admin-users',
+              component: () => import('@/views/admin/AdminUsersView.vue'),
+            },
+            {
+              path: 'users/:id',
+              name: 'admin-user-detail',
+              component: () => import('@/views/admin/AdminUserDetailView.vue'),
+            },
+            {
+              path: 'products',
+              name: 'admin-products',
+              component: () => import('@/views/admin/AdminProductsView.vue'),
+            },
+          ],
         },
       ],
     },
@@ -61,12 +73,26 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
+
+  // Unauthenticated → login
   if (!to.meta.public && !auth.token) {
     return { name: 'login' };
   }
+
+  // Already logged in → don't go back to login
   if (to.name === 'login' && auth.token) {
+    const hasProduct = !!localStorage.getItem('selected_product_id');
+    if (!hasProduct) return { name: 'product-picker' };
     return auth.isAdmin ? { name: 'admin-users' } : { name: 'chat' };
   }
+
+  // Authenticated but no product selected → product picker
+  // (skip for login, product-picker itself)
+  if (auth.token && to.name !== 'product-picker' && !to.meta.public) {
+    const hasProduct = !!localStorage.getItem('selected_product_id');
+    if (!hasProduct) return { name: 'product-picker' };
+  }
+
   if (to.meta.adminOnly) {
     if (!auth.user) await auth.loadMe().catch((e) => {
       console.error('[router] loadMe() failed in admin guard:', e?.message ?? e);

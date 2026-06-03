@@ -59,6 +59,7 @@ model OperatorState {
   maxConcurrentChats Int            @default(5) @map("max_concurrent_chats")
   onCall             Boolean        @default(false) @map("on_call")
   currentCallId      String?        @map("current_call_id") @db.Uuid
+  currentProductId   String?        @map("current_product_id") @db.Uuid
   lastStatusAt       DateTime       @default(now()) @map("last_status_at") @db.Timestamptz()
   skills             String[]       @default([])
   languages          UserLocale[]   @default([uz])

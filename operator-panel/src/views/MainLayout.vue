@@ -42,7 +42,7 @@
           to="/admin/users"
           class="nav-icon"
           :class="{ active: $route.path.startsWith('/admin') }"
-          :title="t('admin.users')"
+          :title="t('admin.title')"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -128,6 +128,7 @@ import { useCallsStore } from '@/stores/calls';
 import { useCentrifugeStore } from '@/stores/centrifuge';
 import { usePresenceStore } from '@/stores/presence';
 import { useRoomsStore } from '@/stores/rooms';
+import { useProductStore } from '@/stores/product';
 import type { OperatorStatus } from '@/api/presence';
 import IncomingCallModal from '@/components/IncomingCallModal.vue';
 import InCallPanel from '@/components/InCallPanel.vue';
@@ -141,6 +142,7 @@ const calls = useCallsStore();
 const centrifuge = useCentrifugeStore();
 const presenceStore = usePresenceStore();
 const rooms = useRoomsStore();
+const productStore = useProductStore();
 
 const showSearch = ref(false);
 const showAvatarMenu = ref(false);
@@ -200,6 +202,13 @@ function setOfflineBeacon() {
 
 onMounted(async () => {
   if (!auth.user) await auth.loadMe();
+
+  // If product already selected (returning session) → restore status
+  if (productStore.selectedProductId && presenceStore.status === 'offline') {
+    await presenceStore.setStatus('available').catch((e) => {
+      console.error('[layout] setStatus failed:', e?.response?.data ?? e?.message ?? e);
+    });
+  }
 
   // Only fire on actual page close/refresh — NOT on tab switch or DevTools open
   window.addEventListener('beforeunload', setOfflineBeacon);

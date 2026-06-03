@@ -122,6 +122,31 @@
       "operator": "Оператор",
       "supervisor": "Супервайзер",
       "admin": "Администратор"
-    }
+    },
+    "products": "Продукты",
+    "productsList": "Список продуктов",
+    "addProduct": "Новый продукт",
+    "addProductTitle": "Добавить новый продукт",
+    "editProductTitle": "Редактировать продукт",
+    "productName": "Название",
+    "productSlug": "Slug (уникальный)",
+    "productDisplayName": "Отображаемое название",
+    "productColor": "Основной цвет",
+    "productLogoUrl": "URL логотипа",
+    "productActive": "Активен",
+    "productInactive": "Неактивен",
+    "noProducts": "Нет продуктов",
+    "productCol": {
+      "name": "ПРОДУКТ",
+      "slug": "SLUG",
+      "color": "ЦВЕТ",
+      "status": "СТАТУС",
+      "actions": ""
+    },
+    "deleteProductTitle": "Удалить продукт",
+    "deleteProductConfirm": "Удалить продукт \"{name}\"?",
+    "slugHint": "Только латинские буквы, цифры и дефис (например: my-product)",
+    "productAccess": "Доступ к продуктам",
+    "productAccessHint": "Выберите, к каким продуктам этот оператор имеет доступ."
   }
 }

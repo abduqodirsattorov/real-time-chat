@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { authApi, type VerifyRes, type MeRes } from '@/api/auth';
 import { useCentrifugeStore } from './centrifuge';
-import { usePresenceStore } from './presence';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('access_token'));
@@ -29,11 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     const centrifuge = useCentrifugeStore();
     await centrifuge.connect();
-
-    const presence = usePresenceStore();
-    await presence.setStatus('available').catch((e) => {
-      console.error('[auth] setStatus("available") failed after login:', e?.response?.data ?? e?.message ?? e);
-    });
+    // NOTE: setStatus('available') is called in ProductPickerView after product selection
   }
 
   async function loadMe() {

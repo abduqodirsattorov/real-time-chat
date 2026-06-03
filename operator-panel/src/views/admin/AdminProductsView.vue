@@ -3,12 +3,12 @@
 
     <!-- Header -->
     <div class="admin-header">
-      <h1 class="admin-title">{{ t('admin.title') }}</h1>
+      <h1 class="admin-title">{{ t('admin.productsList') }}</h1>
       <button class="btn-add" @click="openAddModal">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        {{ t('admin.addUser') }}
+        {{ t('admin.addProduct') }}
       </button>
     </div>
 
@@ -20,26 +20,40 @@
         <thead>
           <tr>
             <th class="col-num">№</th>
-            <th>{{ t('admin.fullName') }}</th>
-            <th class="col-role">{{ t('admin.role') }}</th>
-            <th class="col-actions"></th>
+            <th>{{ t('admin.productCol.name') }}</th>
+            <th class="col-slug">{{ t('admin.productCol.slug') }}</th>
+            <th class="col-color">{{ t('admin.productCol.color') }}</th>
+            <th class="col-status">{{ t('admin.productCol.status') }}</th>
+            <th class="col-actions">{{ t('admin.productCol.actions') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="(user, idx) in users"
-            :key="user.id"
+            v-for="(product, idx) in products"
+            :key="product.id"
             class="user-row"
-            :class="{ selected: selectedId === user.id }"
-            @click="openDetail(user)"
+            @click="openEdit(product)"
           >
             <td class="col-num">{{ idx + 1 }}</td>
-            <td>{{ user.fullName ?? user.email ?? '—' }}</td>
-            <td class="col-role">
-              <span class="role-badge" :class="user.role">{{ t(`admin.roles.${user.role}`) }}</span>
+            <td>
+              <div class="product-name-cell">
+                <span class="color-swatch" :style="{ background: product.branding?.primary_color ?? '#3B6FF5' }" />
+                <span>{{ product.branding?.display_name ?? product.name }}</span>
+              </div>
+            </td>
+            <td class="col-slug"><code class="slug-code">{{ product.slug }}</code></td>
+            <td class="col-color">
+              <div class="color-preview" :style="{ background: product.branding?.primary_color ?? '#3B6FF5' }">
+                {{ product.branding?.primary_color ?? '#3B6FF5' }}
+              </div>
+            </td>
+            <td class="col-status">
+              <span class="status-badge" :class="product.isActive ? 'active' : 'inactive'">
+                {{ product.isActive ? t('admin.productActive') : t('admin.productInactive') }}
+              </span>
             </td>
             <td class="col-actions" @click.stop>
-              <button class="btn-delete" @click="confirmDelete(user)" :title="t('common.delete')">
+              <button class="btn-delete" @click="confirmDelete(product)" :title="t('common.delete')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="3 6 5 6 21 6"/>
                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -49,8 +63,8 @@
               </button>
             </td>
           </tr>
-          <tr v-if="users.length === 0">
-            <td colspan="4" class="empty-row">{{ t('admin.noUsers') }}</td>
+          <tr v-if="products.length === 0">
+            <td colspan="6" class="empty-row">{{ t('admin.noProducts') }}</td>
           </tr>
         </tbody>
       </table>
@@ -68,12 +82,12 @@
               <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
             </svg>
           </div>
-          <h3>{{ t('admin.deleteTitle') }}</h3>
-          <p>{{ t('admin.deleteConfirm', { name: deleteTarget.fullName ?? deleteTarget.email }) }}</p>
+          <h3>{{ t('admin.deleteProductTitle') }}</h3>
+          <p>{{ t('admin.deleteProductConfirm', { name: deleteTarget.branding?.display_name ?? deleteTarget.name }) }}</p>
           <div class="modal-actions">
             <button class="btn-cancel" @click="deleteTarget = null">{{ t('common.cancel') }}</button>
             <button class="btn-danger" :disabled="deleting" @click="doDelete">
-              <span v-if="deleting" class="spinner spinner-dark" />
+              <span v-if="deleting" class="spinner" />
               {{ t('common.delete') }}
             </button>
           </div>
@@ -81,83 +95,63 @@
       </div>
     </Teleport>
 
-    <!-- Add user modal -->
+    <!-- Add / Edit modal -->
     <Teleport to="body">
-      <div v-if="showModal" class="modal-backdrop" @mousedown.self="showModal = false">
-        <div class="modal-box" @click.stop>
-          <h3>{{ t('admin.addUserTitle') }}</h3>
+      <div v-if="showModal" class="modal-backdrop" @mousedown.self="closeModal">
+        <div class="modal-box modal-wide" @click.stop>
+          <h3>{{ editingId ? t('admin.editProductTitle') : t('admin.addProductTitle') }}</h3>
 
-          <!-- hidden dummy fields to fool browser password manager -->
-          <input type="text" name="username" style="display:none" autocomplete="username" tabindex="-1" />
-          <input type="password" name="password" style="display:none" autocomplete="new-password" tabindex="-1" />
-
-          <form @submit.prevent="submitCreate" class="modal-form" autocomplete="off">
+          <form @submit.prevent="submitSave" class="modal-form" autocomplete="off">
             <div class="modal-row">
               <div class="modal-field">
-                <label>{{ t('admin.firstName') }}</label>
-                <input v-model="form.firstName" :placeholder="t('admin.firstName')" required autocomplete="off" />
+                <label>{{ t('admin.productName') }} *</label>
+                <input v-model="form.name" :placeholder="t('admin.productName')" required />
               </div>
-              <div class="modal-field">
-                <label>{{ t('admin.lastName') }}</label>
-                <input v-model="form.lastName" :placeholder="t('admin.lastName')" required autocomplete="off" />
+              <div class="modal-field" v-if="!editingId">
+                <label>{{ t('admin.productSlug') }} *</label>
+                <input v-model="form.slug" :placeholder="'my-product'" required pattern="[a-z0-9\-]+" />
+                <span class="field-hint">{{ t('admin.slugHint') }}</span>
               </div>
-            </div>
-            <div class="modal-field">
-              <label>{{ t('admin.loginEmail') }}</label>
-              <input v-model="form.email" type="text" inputmode="email" :placeholder="t('admin.loginEmail')" required autocomplete="off" />
-            </div>
-            <div class="modal-field">
-              <label>{{ t('login.password') }}</label>
-              <div class="pw-wrap">
-                <input
-                  v-model="form.password"
-                  :type="showPw ? 'text' : 'password'"
-                  :placeholder="t('login.password')"
-                  required
-                  minlength="6"
-                  autocomplete="new-password"
-                />
-                <button type="button" class="pw-toggle" @click="showPw = !showPw" tabindex="-1">
-                  <svg v-if="showPw" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <!-- Product ruxsatlari -->
-            <div class="modal-field" v-if="allProducts.filter(p => p.isActive).length > 0">
-              <label>{{ t('admin.productAccess') }}</label>
-              <div class="product-checks">
-                <label
-                  v-for="product in allProducts.filter(p => p.isActive)"
-                  :key="product.id"
-                  class="product-check-item"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="selectedProductIds.includes(product.id)"
-                    @change="toggleProduct(product.id)"
-                  />
-                  <span
-                    class="check-dot"
-                    :style="{ background: product.branding?.primary_color ?? '#3B6FF5' }"
-                  />
-                  <span>{{ product.branding?.display_name ?? product.name }}</span>
-                </label>
+              <div class="modal-field" v-else>
+                <label>{{ t('admin.productSlug') }}</label>
+                <input :value="form.slug" disabled class="input-disabled" />
               </div>
             </div>
 
-            <p v-if="createError" class="form-error">{{ createError }}</p>
+            <div class="modal-row">
+              <div class="modal-field">
+                <label>{{ t('admin.productDisplayName') }}</label>
+                <input v-model="form.displayName" :placeholder="t('admin.productDisplayName')" />
+              </div>
+              <div class="modal-field">
+                <label>{{ t('admin.productColor') }}</label>
+                <div class="color-input-wrap">
+                  <input
+                    v-model="form.primaryColor"
+                    type="color"
+                    class="color-picker-native"
+                  />
+                  <input
+                    v-model="form.primaryColor"
+                    :placeholder="'#3B6FF5'"
+                    class="color-text-input"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-field">
+              <label>{{ t('admin.productLogoUrl') }}</label>
+              <input v-model="form.logoUrl" :placeholder="'https://...'" type="url" />
+            </div>
+
+            <p v-if="saveError" class="form-error">{{ saveError }}</p>
+
             <div class="modal-actions">
-              <button type="button" class="btn-cancel" @click="showModal = false">{{ t('common.cancel') }}</button>
-              <button type="submit" class="btn-primary" :disabled="creating">
-                <span v-if="creating" class="spinner" />
-                {{ t('admin.addUserSubmit') }}
+              <button type="button" class="btn-cancel" @click="closeModal">{{ t('common.cancel') }}</button>
+              <button type="submit" class="btn-primary" :disabled="saving">
+                <span v-if="saving" class="spinner" />
+                {{ t('common.save') }}
               </button>
             </div>
           </form>
@@ -170,40 +164,36 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { adminApi, type AdminUser } from '@/api/admin';
 import { productsApi, type Product } from '@/api/products';
 
 const { t } = useI18n();
-const router = useRouter();
 
-const users = ref<AdminUser[]>([]);
-const allProducts = ref<Product[]>([]);
+const products = ref<Product[]>([]);
 const loading = ref(false);
 const error = ref('');
-const selectedId = ref<string | null>(null);
 
 const showModal = ref(false);
-const showPw = ref(false);
-const creating = ref(false);
-const createError = ref('');
-const form = ref({ firstName: '', lastName: '', email: '', password: '' });
-const selectedProductIds = ref<string[]>([]);
+const editingId = ref<string | null>(null);
+const saving = ref(false);
+const saveError = ref('');
+const form = ref({
+  name: '',
+  slug: '',
+  displayName: '',
+  primaryColor: '#3B6FF5',
+  logoUrl: '',
+});
 
-const deleteTarget = ref<AdminUser | null>(null);
+const deleteTarget = ref<Product | null>(null);
 const deleting = ref(false);
 
 async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const [usersRes, productsRes] = await Promise.all([
-      adminApi.listUsers(),
-      productsApi.listAll(),
-    ]);
-    users.value = usersRes.items;
-    allProducts.value = productsRes.products;
+    const res = await productsApi.listAll();
+    products.value = res.products;
   } catch {
     error.value = t('common.error');
   } finally {
@@ -212,53 +202,70 @@ async function load() {
 }
 
 function openAddModal() {
-  form.value = { firstName: '', lastName: '', email: '', password: '' };
-  // Default: all active products selected
-  selectedProductIds.value = allProducts.value.filter((p) => p.isActive).map((p) => p.id);
-  createError.value = '';
-  showPw.value = false;
+  editingId.value = null;
+  form.value = { name: '', slug: '', displayName: '', primaryColor: '#3B6FF5', logoUrl: '' };
+  saveError.value = '';
   showModal.value = true;
 }
 
-function toggleProduct(id: string) {
-  const idx = selectedProductIds.value.indexOf(id);
-  if (idx === -1) selectedProductIds.value.push(id);
-  else selectedProductIds.value.splice(idx, 1);
+function openEdit(product: Product) {
+  editingId.value = product.id;
+  form.value = {
+    name: product.name,
+    slug: product.slug,
+    displayName: (product.branding as any)?.display_name ?? '',
+    primaryColor: (product.branding as any)?.primary_color ?? '#3B6FF5',
+    logoUrl: (product.branding as any)?.logo_url ?? '',
+  };
+  saveError.value = '';
+  showModal.value = true;
 }
 
-async function submitCreate() {
-  createError.value = '';
-  creating.value = true;
+function closeModal() {
+  showModal.value = false;
+}
+
+async function submitSave() {
+  saveError.value = '';
+  saving.value = true;
+  const branding = {
+    display_name: form.value.displayName || form.value.name,
+    primary_color: form.value.primaryColor,
+    logo_url: form.value.logoUrl || null,
+  };
+
   try {
-    const created = await adminApi.createUser({
-      ...form.value,
-      productIds: selectedProductIds.value,
-    });
-    users.value.push(created);
+    if (editingId.value) {
+      const updated = await productsApi.update(editingId.value, { name: form.value.name, branding });
+      const idx = products.value.findIndex((p) => p.id === editingId.value);
+      if (idx !== -1) products.value[idx] = updated;
+    } else {
+      const created = await productsApi.create({ name: form.value.name, slug: form.value.slug, branding });
+      products.value.push(created);
+    }
     showModal.value = false;
   } catch (e: unknown) {
-    const msg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
-    createError.value = Array.isArray(msg) ? msg[0] : (msg ?? t('common.error'));
+    saveError.value =
+      (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message?.toString()
+      ?? t('common.error');
   } finally {
-    creating.value = false;
+    saving.value = false;
   }
 }
 
-function openDetail(user: AdminUser) {
-  selectedId.value = user.id;
-  router.push({ name: 'admin-user-detail', params: { id: user.id } });
-}
-
-function confirmDelete(user: AdminUser) {
-  deleteTarget.value = user;
+function confirmDelete(product: Product) {
+  deleteTarget.value = product;
 }
 
 async function doDelete() {
   if (!deleteTarget.value) return;
   deleting.value = true;
   try {
-    await adminApi.deleteUser(deleteTarget.value.id);
-    users.value = users.value.filter((u) => u.id !== deleteTarget.value!.id);
+    await productsApi.remove(deleteTarget.value.id);
+    const target = deleteTarget.value;
+    products.value = products.value.map((p) =>
+      p.id === target.id ? { ...p, isActive: false } : p,
+    );
     deleteTarget.value = null;
   } catch (e: unknown) {
     alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.error'));
@@ -339,8 +346,10 @@ onMounted(load);
   text-align: left;
 }
 
-.col-num { width: 60px; }
-.col-role { width: 140px; text-align: right; }
+.col-num  { width: 50px; }
+.col-slug { width: 140px; }
+.col-color { width: 140px; }
+.col-status { width: 100px; text-align: right; }
 .col-actions { width: 52px; text-align: center; }
 
 .user-row {
@@ -348,14 +357,55 @@ onMounted(load);
   transition: background 0.12s;
 }
 .user-row:hover { background: var(--c-surface); }
-.user-row.selected { background: var(--c-accent-bg); }
 .user-row + .user-row { border-top: 1px solid var(--c-border); }
-
 .user-row td {
   padding: 14px 20px;
   font-size: 14px;
   color: var(--c-text);
 }
+
+.product-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-swatch {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.slug-code {
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--c-surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--c-text-2);
+}
+
+.color-preview {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  font-family: monospace;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+.status-badge.active { background: #e6fbf0; color: #1a7f4b; border: 1px solid #a3e6c3; }
+.status-badge.inactive { background: #f5f5f5; color: #999; border: 1px solid #e0e0e0; }
 
 .btn-delete {
   opacity: 0;
@@ -370,19 +420,6 @@ onMounted(load);
 }
 .user-row:hover .btn-delete { opacity: 1; }
 .btn-delete:hover { background: #fff1f0; color: var(--c-red); }
-
-.role-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: var(--r-full);
-  font-size: 12px;
-  font-weight: 600;
-  background: #fff3e8;
-  color: #c05600;
-  border: 1px solid #ffd6a8;
-}
-.role-badge.admin { background: #eef3ff; color: #3b5bdb; border-color: #bac8ff; }
-.role-badge.supervisor { background: #f3f0ff; color: #7048e8; border-color: #d0bfff; }
 
 .empty-row, .loading-row, .error-row {
   padding: 32px;
@@ -411,6 +448,8 @@ onMounted(load);
   max-width: 95vw;
   box-shadow: 0 20px 60px rgba(0,0,0,0.18);
 }
+
+.modal-wide { width: 520px; }
 
 .modal-box h3 {
   font-size: 17px;
@@ -455,21 +494,32 @@ onMounted(load);
   border-color: var(--c-accent);
   background: #fff;
 }
+.input-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-.pw-wrap { position: relative; }
-.pw-wrap input { padding-right: 40px; }
-.pw-toggle {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--c-text-2);
-  cursor: pointer;
-  padding: 0;
+.field-hint {
+  font-size: 11px;
+  color: var(--c-text-3);
+  line-height: 1.4;
+}
+
+.color-input-wrap {
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+.color-picker-native {
+  width: 40px !important;
+  height: 36px !important;
+  padding: 2px !important;
+  border-radius: var(--r-sm) !important;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.color-text-input {
+  flex: 1;
 }
 
 .form-error {
@@ -571,48 +621,5 @@ onMounted(load);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
-.spinner-dark {
-  border-color: rgba(255,255,255,0.4);
-  border-top-color: #fff;
-}
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.product-checks {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  background: var(--c-surface);
-  border-radius: var(--r-sm);
-  border: 1.5px solid transparent;
-}
-
-.product-check-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--c-text);
-  user-select: none;
-}
-
-.product-check-item input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--c-accent);
-  cursor: pointer;
-  flex-shrink: 0;
-  padding: 0 !important;
-  border: none !important;
-  background: none !important;
-}
-
-.check-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  border: 1px solid rgba(0,0,0,0.1);
-}
 </style>

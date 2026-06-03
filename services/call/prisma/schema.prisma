@@ -102,6 +102,7 @@ model OperatorState {
   activeChats        Int            @default(0) @map("active_chats")
   maxConcurrentChats Int            @default(5) @map("max_concurrent_chats")
   onCall             Boolean        @default(false) @map("on_call")
+  currentProductId   String?        @map("current_product_id") @db.Uuid
   languages          UserLocale[]
   skills             String[]
 
@@ -110,6 +111,7 @@ model OperatorState {
 
 model Call {
   id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  productId       String?       @map("product_id") @db.Uuid
   callerId        String?       @map("caller_id") @db.Uuid
   calleeId        String?       @map("callee_id") @db.Uuid
   direction       CallDirection

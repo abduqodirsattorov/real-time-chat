@@ -36,6 +36,7 @@ export class QueueProcessor {
       }
 
       const locale = item.requiredLanguage ?? 'uz';
+      const productId = (call.metadata as any)?.productId ?? null;
 
       // MUST match findAvailableOperator criteria: onCall=false + isOnline check
       const candidates = await this.prisma.operatorState.findMany({
@@ -43,6 +44,7 @@ export class QueueProcessor {
           status: 'available' as any,
           onCall: false,               // ← operator must not be on another call
           languages: { has: locale as any },
+          ...(productId ? { currentProductId: productId } : {}),
           ...(item.requiredSkills.length > 0 ? { skills: { hasSome: item.requiredSkills } } : {}),
         },
         orderBy: { activeChats: 'asc' },

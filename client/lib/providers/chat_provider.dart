@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/room.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
+import '../config.dart';
 
 class ChatProvider extends ChangeNotifier {
   Room? _activeRoom;
@@ -38,7 +39,9 @@ class ChatProvider extends ChangeNotifier {
 
   Future<Room?> getOrCreateSupportRoom() async {
     try {
-      final res = await ApiService().post('/support/request', data: {'subject': 'Yordam kerak'});
+      final body = <String, dynamic>{'subject': 'Yordam kerak'};
+      if (Config.productId != null) body['productId'] = Config.productId;
+      final res = await ApiService().post('/support/request', data: body);
       _supportRoomId = res['roomId'] ?? res['id'];
       return await loadRoom(_supportRoomId!);
     } on DioException catch (e) {

@@ -50,12 +50,34 @@ CREATE TABLE devices (
 
 CREATE INDEX idx_devices_user ON devices(user_id);
 
+-- ── Products (tenants) ─────────────────────────────────────────────────────────
+CREATE TABLE products (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        VARCHAR(255) NOT NULL,
+  slug        VARCHAR(64)  NOT NULL,
+  branding    JSONB        NOT NULL DEFAULT '{}',
+  settings    JSONB        NOT NULL DEFAULT '{}',
+  is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (slug)
+);
+
+INSERT INTO products (id, name, slug, branding, settings)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  'Asosiy',
+  'default',
+  '{"display_name":"Asosiy","primary_color":"#3B6FF5","logo_url":null}',
+  '{}'
+);
+
 -- ── Rooms ──────────────────────────────────────────────────────────────────────
 CREATE TYPE room_type AS ENUM ('direct', 'support', 'transfer_consult');
 CREATE TYPE room_status AS ENUM ('open', 'closed', 'pending', 'bot_handling');
 
 CREATE TABLE rooms (
   id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id           UUID REFERENCES products(id),
   type                 room_type NOT NULL,
   status               room_status NOT NULL DEFAULT 'open',
   title                VARCHAR(255),
@@ -73,6 +95,7 @@ CREATE TABLE rooms (
 CREATE INDEX idx_rooms_customer ON rooms(customer_id);
 CREATE INDEX idx_rooms_operator ON rooms(operator_id) WHERE status = 'open';
 CREATE INDEX idx_rooms_status ON rooms(status, last_message_at DESC);
+CREATE INDEX idx_rooms_product ON rooms(product_id);
 
 CREATE TABLE room_members (
   room_id              UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -188,6 +211,7 @@ CREATE TABLE operator_states (
   max_concurrent_chats INT NOT NULL DEFAULT 5,
   on_call              BOOLEAN NOT NULL DEFAULT FALSE,
   current_call_id      UUID,
+  current_product_id   UUID REFERENCES products(id),
   last_status_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   skills               TEXT[] DEFAULT '{}',
   languages            user_locale[] DEFAULT '{uz}',
@@ -206,6 +230,7 @@ CREATE TYPE call_status AS ENUM (
 
 CREATE TABLE calls (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id          UUID REFERENCES products(id),
   caller_id           UUID REFERENCES users(id),
   callee_id           UUID REFERENCES users(id),
   direction           call_direction NOT NULL,
@@ -227,6 +252,7 @@ CREATE INDEX idx_calls_caller ON calls(caller_id, initiated_at DESC);
 CREATE INDEX idx_calls_callee ON calls(callee_id, initiated_at DESC);
 CREATE INDEX idx_calls_status ON calls(status)
   WHERE status IN ('queued', 'ringing', 'connected', 'on_hold');
+CREATE INDEX idx_calls_product ON calls(product_id);
 
 -- ── Call transfers ─────────────────────────────────────────────────────────────
 CREATE TYPE transfer_type AS ENUM ('cold', 'warm');
@@ -284,6 +310,17 @@ CREATE TABLE recordings (
 );
 
 CREATE INDEX idx_recordings_call ON recordings(call_id);
+
+-- ── Operator ↔ Product permissions ────────────────────────────────────────────
+CREATE TABLE operator_products (
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, product_id)
+);
+
+CREATE INDEX idx_operator_products_user    ON operator_products(user_id);
+CREATE INDEX idx_operator_products_product ON operator_products(product_id);
 
 -- ── Audit log ──────────────────────────────────────────────────────────────────
 CREATE TABLE audit_logs (

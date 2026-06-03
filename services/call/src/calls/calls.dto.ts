@@ -6,6 +6,9 @@ export class InitiateCallDto {
 
   @IsOptional() @IsString()
   subject?: string;
+
+  @IsOptional() @IsUUID()
+  productId?: string;
 }
 
 export class OutboundCallDto {

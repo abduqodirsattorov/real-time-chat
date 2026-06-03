@@ -175,6 +175,27 @@ export class OperatorService {
     };
   }
 
+  // ── PATCH /operator/product ──────────────────────────────────────────────────
+
+  async selectProduct(user: JwtUser, productId: string) {
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
+
+    await this.prisma.operatorState.upsert({
+      where: { userId: user.sub },
+      create: {
+        userId: user.sub,
+        status: 'offline' as any,
+        currentProductId: productId,
+        skills: [],
+        languages: ['uz' as any],
+      },
+      update: { currentProductId: productId },
+    });
+
+    this.logger.log({ event: 'product_selected', userId: user.sub, productId });
+    return { userId: user.sub, productId };
+  }
+
   // ── Internal: handle operator disconnect (called from webhooks) ──────────────
 
   async handleOperatorDisconnect(userId: string) {

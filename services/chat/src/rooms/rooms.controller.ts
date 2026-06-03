@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Param, Body,
-  Query, UseGuards, HttpCode, HttpStatus,
+  Query, UseGuards, HttpCode, HttpStatus, Headers,
 } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -15,13 +15,21 @@ export class RoomsController {
   constructor(private readonly rooms: RoomsService) {}
 
   @Get()
-  list(@CurrentUser() user: JwtUser, @Query() dto: ListRoomsDto) {
-    return this.rooms.list(user, dto);
+  list(
+    @CurrentUser() user: JwtUser,
+    @Query() dto: ListRoomsDto,
+    @Headers('x-product-id') productId?: string,
+  ) {
+    return this.rooms.list(user, dto, productId);
   }
 
   @Post()
-  create(@CurrentUser() user: JwtUser, @Body() dto: CreateRoomDto) {
-    return this.rooms.create(user, dto);
+  create(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: CreateRoomDto,
+    @Headers('x-product-id') productId?: string,
+  ) {
+    return this.rooms.create(user, dto, productId);
   }
 
   @Get(':id')

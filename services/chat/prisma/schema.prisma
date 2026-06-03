@@ -90,10 +90,27 @@ model User {
   @@map("users")
 }
 
+// ── Product (tenant) ──────────────────────────────────────────────────────────
+
+model Product {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name      String   @db.VarChar(255)
+  slug      String   @unique @db.VarChar(64)
+  branding  Json     @default("{}")
+  settings  Json     @default("{}")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  rooms Room[]
+
+  @@map("products")
+}
+
 // ── Room ──────────────────────────────────────────────────────────────────────
 
 model Room {
   id                 String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  productId          String?    @map("product_id") @db.Uuid
   type               RoomType   @default(support)
   status             RoomStatus @default(pending)
   title              String?    @db.VarChar(255)
@@ -107,10 +124,12 @@ model Room {
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   closedAt           DateTime?  @map("closed_at") @db.Timestamptz()
 
+  product  Product?   @relation(fields: [productId], references: [id])
   members  RoomMember[]
 
   @@index([status, lastMessageAt(sort: Desc)])
   @@index([customerId])
+  @@index([productId])
   @@map("rooms")
 }
 
@@ -192,6 +211,18 @@ model SystemMessageTemplate {
   @@map("system_message_templates")
 }
 
+// ── OperatorProduct ───────────────────────────────────────────────────────────
+
+model OperatorProduct {
+  userId    String   @map("user_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@id([userId, productId])
+  @@index([userId])
+  @@map("operator_products")
+}
+
 // ── OperatorState ─────────────────────────────────────────────────────────────
 
 model OperatorState {
@@ -201,6 +232,7 @@ model OperatorState {
   maxConcurrentChats Int            @default(5) @map("max_concurrent_chats")
   onCall             Boolean        @default(false) @map("on_call")
   currentCallId      String?        @map("current_call_id") @db.Uuid
+  currentProductId   String?        @map("current_product_id") @db.Uuid
   lastStatusAt       DateTime       @default(now()) @map("last_status_at") @db.Timestamptz()
   skills             String[]       @default([])
   languages          UserLocale[]   @default([uz])

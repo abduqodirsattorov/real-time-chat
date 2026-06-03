@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:livekit_client/livekit_client.dart';
 import '../services/api_service.dart';
+import '../config.dart';
 
 enum CallState { idle, ringing, connected, ended }
 
@@ -53,7 +54,9 @@ class CallService {
   }
 
   Future<ActiveCall> initiateCall() async {
-    final res = await ApiService().post('/calls/initiate', data: {'type': 'audio'});
+    final body = <String, dynamic>{'type': 'audio'};
+    if (Config.productId != null) body['productId'] = Config.productId;
+    final res = await ApiService().post('/calls/initiate', data: body);
     final call = res['call'] as Map<String, dynamic>;
     _activeCall = ActiveCall(
       callId: call['id'] as String,

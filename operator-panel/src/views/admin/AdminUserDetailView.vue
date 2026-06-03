@@ -30,6 +30,9 @@
         <button :class="{ active: tab === 'password' }" @click="tab = 'password'">
           {{ t('admin.tabPassword') }}
         </button>
+        <button v-if="user.role !== 'admin'" :class="{ active: tab === 'products' }" @click="tab = 'products'">
+          {{ t('admin.products') }}
+        </button>
       </div>
 
       <!-- Name tab -->
@@ -93,6 +96,35 @@
           </button>
         </form>
       </div>
+
+      <!-- Products tab -->
+      <div v-else-if="tab === 'products'" class="detail-card">
+        <div class="detail-form">
+          <p class="products-hint">{{ t('admin.productAccessHint') }}</p>
+          <div class="product-checks" v-if="allProducts.filter(p => p.isActive).length">
+            <label
+              v-for="product in allProducts.filter(p => p.isActive)"
+              :key="product.id"
+              class="product-check-item"
+            >
+              <input
+                type="checkbox"
+                :checked="selectedProductIds.includes(product.id)"
+                @change="toggleProduct(product.id)"
+              />
+              <span class="check-dot" :style="{ background: product.branding?.primary_color ?? '#3B6FF5' }" />
+              <span>{{ product.branding?.display_name ?? product.name }}</span>
+            </label>
+          </div>
+          <div v-else class="state-msg">{{ t('admin.noProducts') }}</div>
+          <p v-if="productsError" class="form-error">{{ productsError }}</p>
+          <p v-if="productsSuccess" class="form-success">{{ productsSuccess }}</p>
+          <button class="btn-save" :disabled="productsSaving" @click="saveProducts">
+            <span v-if="productsSaving" class="spinner" />
+            {{ t('common.save') }}
+          </button>
+        </div>
+      </div>
     </template>
 
   </div>
@@ -103,15 +135,17 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { adminApi, type AdminUser } from '@/api/admin';
+import { productsApi, type Product } from '@/api/products';
 
 const { t } = useI18n();
 const route = useRoute();
 const id = route.params.id as string;
 
 const user = ref<AdminUser | null>(null);
+const allProducts = ref<Product[]>([]);
 const loading = ref(false);
 const loadError = ref('');
-const tab = ref<'name' | 'password'>('name');
+const tab = ref<'name' | 'password' | 'products'>('name');
 
 const nameForm = ref({ firstName: '', lastName: '' });
 const nameSaving = ref(false);
@@ -124,17 +158,34 @@ const pwSaving = ref(false);
 const pwError = ref('');
 const pwSuccess = ref('');
 
+const selectedProductIds = ref<string[]>([]);
+const productsSaving = ref(false);
+const productsError = ref('');
+const productsSuccess = ref('');
+
 function splitName(fullName: string | null) {
   const parts = (fullName ?? '').split(' ');
   return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
+}
+
+function toggleProduct(pid: string) {
+  const idx = selectedProductIds.value.indexOf(pid);
+  if (idx === -1) selectedProductIds.value.push(pid);
+  else selectedProductIds.value.splice(idx, 1);
 }
 
 async function load() {
   loading.value = true;
   loadError.value = '';
   try {
-    user.value = await adminApi.getUser(id);
-    const split = splitName(user.value.fullName);
+    const [userData, productsData] = await Promise.all([
+      adminApi.getUser(id),
+      productsApi.listAll(),
+    ]);
+    user.value = userData;
+    allProducts.value = productsData.products;
+    selectedProductIds.value = [...(userData.productIds ?? [])];
+    const split = splitName(userData.fullName);
     nameForm.value = split;
   } catch {
     loadError.value = t('common.error');
@@ -175,6 +226,22 @@ async function savePassword() {
   }
 }
 
+async function saveProducts() {
+  productsError.value = '';
+  productsSuccess.value = '';
+  productsSaving.value = true;
+  try {
+    const updated = await adminApi.updateUser(id, { productIds: selectedProductIds.value });
+    selectedProductIds.value = updated.productIds ?? [];
+    productsSuccess.value = t('admin.savedOk');
+  } catch (e: unknown) {
+    productsError.value =
+      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? t('common.error');
+  } finally {
+    productsSaving.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 
@@ -187,7 +254,6 @@ onMounted(load);
   align-self: stretch;
 }
 
-/* Breadcrumb */
 .breadcrumb {
   display: flex;
   align-items: center;
@@ -196,16 +262,11 @@ onMounted(load);
   color: var(--c-text-2);
   margin-bottom: 16px;
 }
-.bc-link {
-  color: var(--c-text-2);
-  text-decoration: none;
-  transition: color 0.12s;
-}
+.bc-link { color: var(--c-text-2); text-decoration: none; transition: color 0.12s; }
 .bc-link:hover { color: var(--c-accent); }
 .bc-sep { color: var(--c-text-3); }
 .bc-current { color: var(--c-text); font-weight: 500; }
 
-/* Header */
 .detail-header {
   display: flex;
   align-items: center;
@@ -232,7 +293,6 @@ onMounted(load);
   color: var(--c-text);
 }
 
-/* Tabs */
 .detail-tabs {
   display: flex;
   gap: 4px;
@@ -241,7 +301,7 @@ onMounted(load);
 
 .detail-tabs button {
   padding: 8px 16px;
-  border: none;
+  border: 1.5px solid transparent;
   background: transparent;
   border-radius: var(--r-sm);
   font-size: 13px;
@@ -249,7 +309,6 @@ onMounted(load);
   color: var(--c-text-2);
   cursor: pointer;
   transition: all 0.15s;
-  border: 1.5px solid transparent;
 }
 .detail-tabs button.active {
   color: var(--c-accent);
@@ -258,7 +317,6 @@ onMounted(load);
   font-weight: 600;
 }
 
-/* Card */
 .detail-card {
   background: var(--c-bg);
   border: 1px solid var(--c-border);
@@ -305,51 +363,74 @@ onMounted(load);
 .pw-wrap input { padding-right: 40px; width: 100%; }
 .pw-toggle {
   position: absolute;
-  right: 10px;
-  top: 50%;
+  right: 10px; top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--c-text-2);
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
+  background: none; border: none;
+  color: var(--c-text-2); cursor: pointer;
+  padding: 0; display: flex; align-items: center;
 }
 
 .form-error {
-  font-size: 13px;
-  color: var(--c-red);
-  padding: 8px 12px;
-  background: #fff1f0;
+  font-size: 13px; color: var(--c-red);
+  padding: 8px 12px; background: #fff1f0;
   border-radius: var(--r-xs);
 }
 
 .form-success {
-  font-size: 13px;
-  color: #087f5b;
-  padding: 8px 12px;
-  background: #d3f9d8;
+  font-size: 13px; color: #087f5b;
+  padding: 8px 12px; background: #d3f9d8;
   border-radius: var(--r-xs);
 }
 
 .btn-save {
   align-self: flex-start;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: flex; align-items: center; gap: 6px;
   padding: 10px 24px;
-  background: var(--c-accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--r-sm);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  background: var(--c-accent); color: #fff;
+  border: none; border-radius: var(--r-sm);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s;
 }
 .btn-save:hover:not(:disabled) { opacity: 0.88; }
 .btn-save:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.products-hint {
+  font-size: 13px;
+  color: var(--c-text-2);
+  line-height: 1.5;
+}
+
+.product-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--c-surface);
+  border-radius: var(--r-sm);
+}
+
+.product-check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--c-text);
+  user-select: none;
+}
+
+.product-check-item input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--c-accent);
+  cursor: pointer; flex-shrink: 0;
+  padding: 0 !important; border: none !important; background: none !important;
+}
+
+.check-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%; flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.1);
+}
 
 .state-msg {
   padding: 32px;

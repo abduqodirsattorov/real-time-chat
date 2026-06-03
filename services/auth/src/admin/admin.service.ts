@@ -23,14 +23,24 @@ export class AdminService {
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        select: { id: true, fullName: true, email: true, role: true, status: true, createdAt: true },
+        select: {
+          id: true, fullName: true, email: true, role: true, status: true, createdAt: true,
+          operatorProducts: { select: { productId: true } },
+        },
         orderBy: { createdAt: 'asc' },
         skip: (opts.page - 1) * opts.limit,
         take: opts.limit,
       }),
       this.prisma.user.count({ where }),
     ]);
-    return { items, total, page: opts.page, limit: opts.limit };
+    return {
+      items: items.map((u) => ({
+        ...u,
+        productIds: u.operatorProducts.map((op) => op.productId),
+        operatorProducts: undefined,
+      })),
+      total, page: opts.page, limit: opts.limit,
+    };
   }
 
   async createUser(dto: CreateUserDto) {
@@ -39,7 +49,6 @@ export class AdminService {
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const fullName = `${dto.firstName} ${dto.lastName}`.trim();
-
     const role = (dto.role as UserRole) ?? 'operator';
 
     const user = await this.prisma.user.create({
@@ -54,7 +63,7 @@ export class AdminService {
       select: { id: true, fullName: true, email: true, role: true, createdAt: true },
     });
 
-    // operator va supervisor uchun operator_states record yaratish
+    // operator_states record
     if (role !== 'admin') {
       await this.prisma.$executeRaw`
         INSERT INTO operator_states
@@ -65,21 +74,39 @@ export class AdminService {
       `;
     }
 
-    return user;
+    // operator_products — ruxsat etilgan productlar
+    const productIds = dto.productIds ?? [];
+    if (productIds.length > 0) {
+      await this.prisma.$executeRaw`
+        INSERT INTO operator_products (user_id, product_id)
+        SELECT ${user.id}::uuid, unnest(${productIds}::uuid[])
+        ON CONFLICT DO NOTHING
+      `;
+    }
+
+    return { ...user, productIds };
   }
 
   async getUser(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, fullName: true, email: true, role: true, status: true, createdAt: true },
+      select: {
+        id: true, fullName: true, email: true, role: true, status: true, createdAt: true,
+        operatorProducts: { select: { productId: true } },
+      },
     });
     if (!user) throw new NotFoundException('Foydalanuvchi topilmadi');
-    return user;
+    return {
+      ...user,
+      productIds: user.operatorProducts.map((op) => op.productId),
+      operatorProducts: undefined,
+    };
   }
 
   async updateUser(id: string, dto: UpdateUserDto) {
     await this.getUser(id);
     const updates: Record<string, unknown> = {};
+
     if (dto.firstName !== undefined || dto.lastName !== undefined) {
       const user = await this.prisma.user.findUnique({ where: { id }, select: { fullName: true } });
       const parts = (user?.fullName ?? '').split(' ');
@@ -87,11 +114,31 @@ export class AdminService {
       const last = dto.lastName ?? parts.slice(1).join(' ') ?? '';
       updates.fullName = `${first} ${last}`.trim();
     }
-    return this.prisma.user.update({
+
+    const updated = await this.prisma.user.update({
       where: { id },
       data: updates,
       select: { id: true, fullName: true, email: true, role: true },
     });
+
+    // Update product permissions if provided
+    if (dto.productIds !== undefined) {
+      await this.prisma.$executeRaw`DELETE FROM operator_products WHERE user_id = ${id}::uuid`;
+      if (dto.productIds.length > 0) {
+        await this.prisma.$executeRaw`
+          INSERT INTO operator_products (user_id, product_id)
+          SELECT ${id}::uuid, unnest(${dto.productIds}::uuid[])
+          ON CONFLICT DO NOTHING
+        `;
+      }
+    }
+
+    const productIds = dto.productIds ?? (await this.prisma.operatorProduct.findMany({
+      where: { userId: id },
+      select: { productId: true },
+    })).map((op) => op.productId);
+
+    return { ...updated, productIds };
   }
 
   async updatePassword(id: string, password: string) {

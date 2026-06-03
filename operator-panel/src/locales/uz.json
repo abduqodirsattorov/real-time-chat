@@ -122,6 +122,31 @@
       "operator": "Operator",
       "supervisor": "Supervisor",
       "admin": "Admin"
-    }
+    },
+    "products": "Productlar",
+    "productsList": "Productlar ro'yxati",
+    "addProduct": "Yangi product",
+    "addProductTitle": "Yangi product qo'shish",
+    "editProductTitle": "Productni tahrirlash",
+    "productName": "Nomi",
+    "productSlug": "Slug (unikal)",
+    "productDisplayName": "Ko'rsatiluvchi nom",
+    "productColor": "Asosiy rang",
+    "productLogoUrl": "Logo URL",
+    "productActive": "Faol",
+    "productInactive": "Nofaol",
+    "noProducts": "Productlar yo'q",
+    "productCol": {
+      "name": "PRODUCT",
+      "slug": "SLUG",
+      "color": "RANG",
+      "status": "HOLATI",
+      "actions": ""
+    },
+    "deleteProductTitle": "Productni o'chirish",
+    "deleteProductConfirm": "\"{name}\" productini o'chirishni tasdiqlaysizmi?",
+    "slugHint": "Faqat lotin harflari, raqamlar va chiziqcha (masalan: my-product)",
+    "productAccess": "Product ruxsati (qaysi ilovalar)",
+    "productAccessHint": "Bu operator qaysi ilovaлar bilan ishlashi mumkinligini tanlang."
   }
 }

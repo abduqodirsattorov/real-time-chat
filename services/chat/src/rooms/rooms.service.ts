@@ -22,7 +22,7 @@ export class RoomsService {
 
   // ── List rooms ───────────────────────────────────────────────────────────────
 
-  async list(user: JwtUser, dto: ListRoomsDto) {
+  async list(user: JwtUser, dto: ListRoomsDto, productId?: string) {
     const limit = dto.limit ?? 50;
     let cursorDate: Date | undefined;
 
@@ -34,12 +34,16 @@ export class RoomsService {
 
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
 
+    // Operators see only their current product's rooms
+    const productFilter = isOperator && productId ? { productId } : {};
+
     const where: any = {
       ...(dto.status ? { status: dto.status as any } : {}),
       ...(dto.type ? { type: dto.type as any } : {}),
       ...(!isOperator ? {
         members: { some: { userId: user.sub, leftAt: null } },
       } : {}),
+      ...productFilter,
       ...(cursorDate ? { lastMessageAt: { lt: cursorDate } } : {}),
     };
 
@@ -81,7 +85,7 @@ export class RoomsService {
 
   // ── Create room ──────────────────────────────────────────────────────────────
 
-  async create(user: JwtUser, dto: CreateRoomDto) {
+  async create(user: JwtUser, dto: CreateRoomDto, productId?: string) {
     const memberIds: string[] = dto.memberIds ?? [];
     if (!memberIds.includes(user.sub)) memberIds.push(user.sub);
 
@@ -94,6 +98,7 @@ export class RoomsService {
         title: dto.title,
         status: isSupport ? 'pending' : 'open',
         customerId,
+        ...(productId ? { productId } : {}),
         members: {
           create: memberIds.map(uid => ({ userId: uid })),
         },

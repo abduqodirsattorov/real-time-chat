@@ -22,12 +22,15 @@ export class SupportService {
   ) {}
 
   async requestSupport(user: JwtUser, dto: SupportRequestDto) {
+    const productId = dto.productId ?? null;
+
     // 1. Mavjud ochiq support room bormi?
     const existingRoom = await this.prisma.room.findFirst({
       where: {
         type: 'support',
         status: { in: ['open', 'pending'] },
         members: { some: { userId: user.sub, leftAt: null } },
+        ...(productId ? { productId } : {}),
       },
     });
 
@@ -38,23 +41,24 @@ export class SupportService {
       });
     }
 
-    // 2. Yangi room (pending)
+    // 2. Yangi room (pending) — product bilan bog'lash
     const room = await this.prisma.room.create({
       data: {
         type: 'support',
         status: 'pending',
         title: dto.subject ?? null,
         customerId: user.sub,
+        ...(productId ? { productId } : {}),
         members: {
           create: { userId: user.sub },
         },
       },
     });
 
-    this.logger.log({ event: 'support_request', roomId: room.id, userId: user.sub });
+    this.logger.log({ event: 'support_request', roomId: room.id, userId: user.sub, productId });
 
-    // 3. ACD
-    const operator = await this.findAvailableOperator(user.locale, dto.requiredSkills ?? []);
+    // 3. ACD — faqat shu productda ishlayotgan operatorlar
+    const operator = await this.findAvailableOperator(user.locale, dto.requiredSkills ?? [], productId);
 
     if (!operator) {
       await this.rabbitmq.publish('support.pending', {
@@ -72,11 +76,13 @@ export class SupportService {
   private async findAvailableOperator(
     locale: string,
     requiredSkills: string[],
+    productId: string | null,
   ): Promise<{ userId: string; activeChats: number } | null> {
     const candidates = await this.prisma.operatorState.findMany({
       where: {
         status: 'available',
         languages: { has: locale as any },
+        ...(productId ? { currentProductId: productId } : {}),
         ...(requiredSkills.length > 0 ? { skills: { hasSome: requiredSkills } } : {}),
       },
       orderBy: { activeChats: 'asc' },
