@@ -29,6 +29,10 @@ export class CentrifugoService implements OnModuleInit {
     await this.publish(`chat:room#${roomId}`, { event, ...payload });
   }
 
+  async publishToUser(userId: string, event: string, payload: Record<string, unknown>): Promise<void> {
+    await this.publish(`chat:user#${userId}`, { event, ...payload });
+  }
+
   async publishPresence(roomId: string, event: string, payload: Record<string, unknown>): Promise<void> {
     await this.publish(`presence:${roomId}`, { event, ...payload });
   }

@@ -51,6 +51,12 @@
 - Product izolyatsiya: operator faqat o'z product tranzaksiyalarini ko'radi
 - API: GET /transactions, GET /transactions/:id, POST /transactions/upsert
 
+### Bildirishnoma (yangi murojaat) ✅
+- Yangi room assign → real-time: ovoz (Web Audio ding) + badge + tab title + brauzer notification
+- Yangi xabar → ovoz + unread badge + tab title `(N)` + brauzer notification
+- Call ringtone alohida — buzilmadi
+- Backend: `room.assigned` Centrifugo event via shaxsiy kanal
+
 ### Operator status kengaytirish ✅
 - Holatlar: Mavjud / Band (busy) / Tanaffus (break) / Oflayn
 - ACD: faqat `available` operatorga call/chat (busy/break → yo'q)

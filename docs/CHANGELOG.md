@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## 2026-06-04 — Bildirishnoma: yangi murojaat ovoz + badge + tab title
+
+### Qo'shildi / Tuzatildi
+
+**Backend (chat-service):**
+- `centrifugo.service.ts` — `publishToUser(userId, event, payload)` metod qo'shildi
+- `support.service.ts` — `assignOperator`:
+  - Operator tayinlangach, uning shaxsiy kanaliga (`chat:user#<operatorId>`) `room.assigned` event yuboriladi
+  - Event ichida to'liq room ma'lumoti: `id, status, customerId, customerName, customerPhone, tagIds, members, ...`
+
+**Frontend (operator-panel):**
+- `stores/rooms.ts` — `handleIncomingRoom` to'ldirildi (avval deyarli bo'sh edi):
+  - Yangi room → `rooms.value.unshift(room)` + unread badge (`unreadCounts[id] = 1`)
+  - `updateTabTitle()` — tab title `(N)` yangilanadi
+  - `playNotificationSound()` — Web Audio ding signali
+  - `showBrowserNotification(...)` — "Nova Chat — Yangi murojaat" (brauzer ruxsat bersa)
+  - `subscribeRoom(room.id)` — real-time xabarlar uchun kanal (dublikat yo'q)
+- `views/MainLayout.vue` — shaxsiy kanal handleriga `room.assigned` event qo'shildi:
+  - `rooms.handleIncomingRoom(payload.room)` → barcha bildirishnoma avtomatik
+  - `import type { Room }` qo'shildi
+
+**Mavjud (o'zgartirilmadi):**
+- Yangi xabar (faol bo'lmagan room): ovoz ✓, badge ✓, tab title ✓, brauzer notification ✓
+- Call ringtone: alohida modul, tegilmadi ✓
+
+**Test: 54/54 PASS (o'zgarmadi)**
+
+**Brauzer test tartibi:**
+1. Operator panel ochiq → boshqa tab → Flutter client yangi chat boshlaydi
+2. → Operatorda: ding ovozi + inbox badge (1) + tab title `(1) Nova Chat — Operator`
+3. → Brauzer notification: "Nova Chat — Yangi murojaat — Mijoz nomi"
+4. → Yangi room inbox tepasida paydo bo'ladi (real-time, reload kerak emas)
+5. Call ringtone hali ishlaydi (buzilmadi) ✓
+
+---
+
 ## 2026-06-04 — Operator status kengaytirish (busy/break/tanaffus)
 
 ### Qo'shildi

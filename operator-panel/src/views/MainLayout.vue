@@ -139,6 +139,7 @@ import { usePresenceStore } from '@/stores/presence';
 import { useRoomsStore } from '@/stores/rooms';
 import { useProductStore } from '@/stores/product';
 import type { OperatorStatus } from '@/api/presence';
+import type { Room } from '@/api/chat';
 import IncomingCallModal from '@/components/IncomingCallModal.vue';
 import InCallPanel from '@/components/InCallPanel.vue';
 import SearchPanel from '@/components/SearchPanel.vue';
@@ -231,7 +232,16 @@ onMounted(async () => {
         livekitRoom?: string;
         ts?: string;
         call?: Parameters<typeof calls.setIncomingCall>[0];
+        room?: Room;
       };
+
+      // Yangi chat murojaat — operatorga assign bo'ldi
+      if (payload.event === 'room.assigned' && payload.room) {
+        rooms.handleIncomingRoom(payload.room).catch((e) => {
+          console.error('[layout] handleIncomingRoom failed:', e);
+        });
+      }
+
       if (payload.event === 'call.incoming') {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try { new Notification("Nova Chat — Kiruvchi qo'ng'iroq", { body: "Mijozdan qo'ng'iroq keldi", icon: '/favicon.ico' }); } catch { /* */ }

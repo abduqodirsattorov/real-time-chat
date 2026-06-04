@@ -157,14 +157,27 @@ export const useRoomsStore = defineStore('rooms', () => {
     await chatApi.sendTyping(roomId);
   }
 
-  function handleIncomingRoom(room: Room) {
+  async function handleIncomingRoom(room: Room) {
     const idx = rooms.value.findIndex((r) => r.id === room.id);
     if (idx >= 0) {
       rooms.value[idx] = room;
-    } else {
-      rooms.value.unshift(room);
-      unreadCounts.value[room.id] = 1;
-      updateTabTitle();
+      return;
+    }
+
+    rooms.value.unshift(room);
+    unreadCounts.value[room.id] = 1;
+    updateTabTitle();
+
+    // Ovoz + brauzer bildirishnoma
+    playNotificationSound();
+    showBrowserNotification(
+      'Nova Chat — Yangi murojaat',
+      room.customerName ?? room.customerPhone ?? 'Yangi mijoz murojaat qildi',
+    );
+
+    // Yangi room uchun real-time subscription (dublikat bo'lmaydi — dedup bor)
+    if (!messages.value[room.id]) {
+      await subscribeRoom(room.id);
     }
   }
 

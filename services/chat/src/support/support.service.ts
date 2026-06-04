@@ -160,6 +160,26 @@ export class SupportService {
       operatorId, roomId, ts: new Date().toISOString(),
     });
 
+    // Operatorga yangi murojaat keldi — personal kanalga bildirishnoma
+    const assignedRoom = await this.prisma.room.findUnique({
+      where: { id: roomId },
+      include: { members: { select: { userId: true, joinedAt: true } } },
+    });
+    const customerUser = assignedRoom?.customerId
+      ? await this.prisma.user.findUnique({
+          where: { id: assignedRoom.customerId },
+          select: { fullName: true, phone: true },
+        })
+      : null;
+
+    await this.centrifugo.publishToUser(operatorId, 'room.assigned', {
+      room: {
+        ...assignedRoom,
+        customerName: customerUser?.fullName ?? null,
+        customerPhone: customerUser?.phone ?? null,
+      },
+    });
+
     await this.rabbitmq.publish('operator.assigned', {
       room_id: roomId, operator_id: operatorId,
       customer_id: customerId, locale, timestamp: Date.now(),
