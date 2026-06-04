@@ -104,7 +104,7 @@ const { t } = useI18n();
 
 .admin-content {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }

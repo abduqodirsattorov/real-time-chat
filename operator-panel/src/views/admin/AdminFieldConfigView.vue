@@ -165,6 +165,9 @@ loadRows();
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .afc-header { display: flex; flex-direction: column; gap: 4px; }
