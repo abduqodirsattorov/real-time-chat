@@ -105,6 +105,7 @@ model Product {
   customers    Customer[]
   transactions Transaction[]
   tags         Tag[]
+  fieldConfigs FieldConfig[]
 
   @@map("products")
 }
@@ -301,4 +302,25 @@ model OperatorState {
 
   @@index([status])
   @@map("operator_states")
+}
+
+// ── FieldConfig ────────────────────────────────────────────────────────────────
+
+model FieldConfig {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  context     String   @db.VarChar(32)
+  fieldKey    String   @map("field_key") @db.VarChar(128)
+  label       String   @db.VarChar(255)
+  visible     Boolean  @default(true)
+  sortOrder   Int      @default(0) @map("sort_order")
+  displayType String   @default("text") @map("display_type") @db.VarChar(32)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, context, fieldKey])
+  @@index([productId, context])
+  @@map("field_configs")
 }

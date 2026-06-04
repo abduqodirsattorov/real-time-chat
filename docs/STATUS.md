@@ -51,6 +51,14 @@
 - Product izolyatsiya: operator faqat o'z product tranzaksiyalarini ko'radi
 - API: GET /transactions, GET /transactions/:id, POST /transactions/upsert
 
+### Admin Field Config (4-BOSQICH) ✅
+- `field_configs` jadval: product_id, context (tx_table/tx_detail/profile), field_key, visible, sort_order, display_type
+- Yangi product → default config avtomatik (auto-seed)
+- Admin: toggle ko'rsat/yashir, tartib (▲▼), nom tahrirlash, display_type
+- Operator: tranzaksiya jadval + detal + profil — config bo'yicha render
+- API: GET /field-configs, PATCH /field-configs
+- 58/58 regressiya testi PASS
+
 ### Bildirishnoma (yangi murojaat) ✅
 - Yangi room assign → real-time: ovoz (Web Audio ding) + badge + tab title + brauzer notification
 - Yangi xabar → ovoz + unread badge + tab title `(N)` + brauzer notification

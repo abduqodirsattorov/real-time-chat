@@ -30,6 +30,8 @@ import { TransactionsController } from './transactions/transactions.controller';
 import { TransactionsService } from './transactions/transactions.service';
 import { TagsController } from './tags/tags.controller';
 import { TagsService } from './tags/tags.service';
+import { FieldConfigsController } from './field-configs/field-configs.controller';
+import { FieldConfigsService } from './field-configs/field-configs.service';
 
 @Module({
   imports: [
@@ -59,6 +61,7 @@ import { TagsService } from './tags/tags.service';
     CustomersController,
     TransactionsController,
     TagsController,
+    FieldConfigsController,
   ],
   providers: [
     JwtStrategy,
@@ -70,6 +73,7 @@ import { TagsService } from './tags/tags.service';
     CustomersService,
     TransactionsService,
     TagsService,
+    FieldConfigsService,
   ],
 })
 export class AppModule implements NestModule {

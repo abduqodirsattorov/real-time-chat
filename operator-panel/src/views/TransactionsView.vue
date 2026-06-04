@@ -146,13 +146,11 @@
               </th>
               <th class="col-id">{{ t('transactions.colId') }}</th>
               <th>{{ t('transactions.colUser') }}</th>
-              <th class="col-status">{{ t('transactions.colDebitStatus') }}</th>
-              <th class="col-status">{{ t('transactions.colCreditStatus') }}</th>
-              <th class="col-service">{{ t('transactions.colService') }}</th>
-              <th class="col-amount">{{ t('transactions.colDebitAmount') }}</th>
-              <th class="col-amount">{{ t('transactions.colCreditAmount') }}</th>
+              <th v-for="col in tableCols" :key="col.fieldKey"
+                :class="{ 'col-status': col.displayType === 'badge', 'col-amount': col.displayType === 'amount', 'col-date': col.displayType === 'date', 'col-service': col.displayType === 'text' }">
+                {{ col.label }}
+              </th>
               <th class="col-date">{{ t('transactions.colCreatedAt') }}</th>
-              <th class="col-date">{{ t('transactions.colPaidAt') }}</th>
               <th class="col-eye"></th>
             </tr>
           </thead>
@@ -177,21 +175,16 @@
                   <span v-if="d(tx, 'phone')" class="user-phone">{{ d(tx, 'phone') }}</span>
                 </div>
               </td>
-              <td class="col-status">
-                <span class="status-badge" :class="stateClass(d(tx, 'debit_state'))">
-                  {{ d(tx, 'debit_state') ?? '—' }}
+              <td v-for="col in tableCols" :key="col.fieldKey"
+                :class="{ 'col-status': col.displayType === 'badge', 'col-amount': col.displayType === 'amount', 'col-date': col.displayType === 'date' }">
+                <span v-if="col.displayType === 'badge'" class="status-badge" :class="stateClass(d(tx, col.fieldKey))">
+                  {{ d(tx, col.fieldKey) ?? '—' }}
                 </span>
+                <template v-else-if="col.displayType === 'amount'">{{ formatAmount(d(tx, col.fieldKey)) }}</template>
+                <template v-else-if="col.displayType === 'date'">{{ formatDate(d(tx, col.fieldKey) as string) }}</template>
+                <template v-else>{{ d(tx, col.fieldKey) ?? '—' }}</template>
               </td>
-              <td class="col-status">
-                <span class="status-badge" :class="stateClass(d(tx, 'credit_state'))">
-                  {{ d(tx, 'credit_state') ?? '—' }}
-                </span>
-              </td>
-              <td class="col-service">{{ d(tx, 'service') ?? d(tx, 'provider') ?? d(tx, 'type') ?? '—' }}</td>
-              <td class="col-amount">{{ formatAmount(d(tx, 'debit_amount') ?? d(tx, 'amount')) }}</td>
-              <td class="col-amount">{{ formatAmount(d(tx, 'credit_amount')) }}</td>
               <td class="col-date">{{ formatDate(tx.createdAt) }}</td>
-              <td class="col-date">{{ formatDate(d(tx, 'paid_at') as string) }}</td>
               <td class="col-eye">
                 <button class="btn-eye" @click.stop="selectTx(tx.id)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -257,14 +250,16 @@
             <span class="dr-key">{{ t('transactions.userUid') }}</span>
             <span class="dr-val">{{ selectedTx.userUid ?? '—' }}</span>
           </div>
-          <template v-for="key in topFields" :key="key">
-            <div v-if="d(selectedTx, key) !== null && d(selectedTx, key) !== undefined" class="detail-row">
-              <span class="dr-key">{{ key }}</span>
+          <template v-for="col in detailTopFields" :key="col.fieldKey">
+            <div v-if="d(selectedTx, col.fieldKey) !== null && d(selectedTx, col.fieldKey) !== undefined" class="detail-row">
+              <span class="dr-key">{{ col.label }}</span>
               <span class="dr-val">
-                <span v-if="isStateField(key)" class="status-badge" :class="stateClass(d(selectedTx, key))">
-                  {{ d(selectedTx, key) }}
+                <span v-if="col.displayType === 'badge'" class="status-badge" :class="stateClass(d(selectedTx, col.fieldKey))">
+                  {{ d(selectedTx, col.fieldKey) }}
                 </span>
-                <span v-else>{{ formatFieldValue(d(selectedTx, key)) }}</span>
+                <template v-else-if="col.displayType === 'amount'">{{ formatAmount(d(selectedTx, col.fieldKey)) }}</template>
+                <template v-else-if="col.displayType === 'date'">{{ formatDate(d(selectedTx, col.fieldKey) as string) }}</template>
+                <template v-else>{{ formatFieldValue(d(selectedTx, col.fieldKey)) }}</template>
               </span>
             </div>
           </template>
@@ -338,6 +333,7 @@ import { useI18n } from 'vue-i18n';
 import { transactionsApi, type Transaction } from '@/api/transactions';
 import { chatApi, type Message } from '@/api/chat';
 import { useCentrifugeStore } from '@/stores/centrifuge';
+import { useFieldConfigsStore } from '@/stores/fieldConfigs';
 import {
   TX_PROVIDERS, TX_TYPES, TX_DEBIT_STATES, TX_CREDIT_STATES, TX_STRANAS,
   TX_ACTIONS, TX_BULK_ACTIONS,
@@ -346,6 +342,7 @@ import {
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
+const fieldCfg = useFieldConfigsStore();
 
 const LIMIT = 20;
 
@@ -419,12 +416,9 @@ const pageButtons = computed(() => {
   return pages;
 });
 
-const topFields = [
-  'debit_state', 'credit_state', 'ext_debit_state', 'ext_credit_state',
-  'amount', 'debit_amount', 'credit_amount', 'currency',
-  'service', 'provider', 'type', 'strana',
-  'phone', 'paid_at',
-];
+// Field configs — dinamik (admin sozlaydi)
+const tableCols = computed(() => fieldCfg.visible('tx_table'));
+const detailTopFields = computed(() => fieldCfg.visible('tx_detail'));
 
 const isStateField = (key: string) => key.includes('state') || key.includes('status');
 
@@ -665,7 +659,7 @@ async function sendTxMsg() {
   } catch { /* no-op */ }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside);
   const uid = route.query.userUid as string;
   const search = route.query.search as string;
@@ -674,6 +668,11 @@ onMounted(() => {
   if (search) searchVal.value = search;
   if (phoneLabel) customerPhoneLabel.value = phoneLabel;
   if (uid || search) router.replace({ path: '/transactions' });
+  // Field configs parallel load qilamiz
+  await Promise.all([
+    fieldCfg.load('tx_table'),
+    fieldCfg.load('tx_detail'),
+  ]);
   load();
 });
 

@@ -70,6 +70,11 @@ export const router = createRouter({
               name: 'admin-tags',
               component: () => import('@/views/admin/AdminTagsView.vue'),
             },
+            {
+              path: 'field-configs',
+              name: 'admin-field-configs',
+              component: () => import('@/views/admin/AdminFieldConfigView.vue'),
+            },
           ],
         },
       ],

@@ -190,6 +190,17 @@
     "addTag": "Teg",
     "removeTag": "Tegni o'chirish"
   },
+  "fieldConfig": {
+    "title": "Maydon sozlamalari",
+    "desc": "Har product uchun qaysi maydon ko'rinishini sozlang (tranzaksiya jadval, detal, profil panel).",
+    "noFields": "Maydonlar yo'q",
+    "colVisible": "Ko'rinsin",
+    "colOrder": "Tartib",
+    "colKey": "Kalit",
+    "colLabel": "Nomi",
+    "colType": "Ko'rinish",
+    "save": "Saqlash"
+  },
   "admin": {
     "title": "Administratorlar",
     "users": "Foydalanuvchilar",
@@ -237,6 +248,7 @@
     "slugHint": "Faqat lotin harflari, raqamlar va chiziqcha (masalan: my-product)",
     "productAccess": "Product ruxsati (qaysi ilovalar)",
     "productAccessHint": "Bu operator qaysi ilovaлar bilan ishlashi mumkinligini tanlang.",
-    "tags": "Teglar"
+    "tags": "Teglar",
+    "fieldConfig": "Maydon sozlash"
   }
 }

@@ -410,6 +410,32 @@ CREATE TRIGGER trg_transactions_updated_at
 BEFORE UPDATE ON transactions
 FOR EACH ROW EXECUTE FUNCTION update_transactions_updated_at();
 
+-- ── Field configs (admin sozlaydi — qaysi maydon ko'rinsin) ──────────────────
+CREATE TABLE field_configs (
+  id           UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id   UUID        NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  context      VARCHAR(32) NOT NULL,
+  field_key    VARCHAR(128) NOT NULL,
+  label        VARCHAR(255) NOT NULL,
+  visible      BOOLEAN     NOT NULL DEFAULT TRUE,
+  sort_order   INT         NOT NULL DEFAULT 0,
+  display_type VARCHAR(32) NOT NULL DEFAULT 'text',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (product_id, context, field_key)
+);
+
+CREATE INDEX idx_field_configs_product_ctx ON field_configs(product_id, context);
+
+CREATE OR REPLACE FUNCTION trg_field_configs_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_field_configs_updated_at
+  BEFORE UPDATE ON field_configs
+  FOR EACH ROW EXECUTE FUNCTION trg_field_configs_updated_at();
+
 -- ── Bot configs (PHASE 10 stub) ────────────────────────────────────────────────
 CREATE TABLE bot_configs (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

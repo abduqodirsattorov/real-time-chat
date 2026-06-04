@@ -1,5 +1,66 @@
 # CHANGELOG
 
+## 2026-06-04 — Admin Field Config: har product uchun maydon sozlash (4-BOSQICH)
+
+### Qo'shildi
+
+**DB:**
+- `field_configs` jadval: `product_id, context, field_key, label, visible, sort_order, display_type`
+- 3 kontekst: `tx_table` (jadval ustunlari), `tx_detail` (detal top fields), `profile` (profil panel)
+- 4 display_type: `text`, `date`, `badge`, `amount`
+- Unique: `(product_id, context, field_key)`
+- Auto-seed: yangi product birinchi `GET` da default konfiguratsiya oladi
+- `infra/postgres/migrate_field_configs.sql` + `init.sql` yangilandi
+- Prisma schema: `FieldConfig` model + `Product.fieldConfigs` relation
+
+**Backend (chat-service):**
+- `GET /field-configs?context=...` — operator/admin oladi (X-Product-Id header bilan)
+  - Yangi product uchun avtomatik default seed
+- `PATCH /field-configs` — admin bulk update (barcha maydonlar bir so'rovda)
+  - Body: `{ context, items: [{ fieldKey, label, visible, sortOrder, displayType }] }`
+- Traefik: `/api/v1/field-configs` → chat-service qo'shildi
+- `app.module.ts`: `FieldConfigsController` + `FieldConfigsService` ro'yxatdan o'tdi
+
+**Frontend (operator-panel):**
+- `api/fieldConfigs.ts` — `FieldConfig` type + `list()` + `bulkUpdate()`
+- `stores/fieldConfigs.ts` — Pinia store: `load()`, `visible()`, `update()`, `invalidate()`
+- `TransactionsView.vue`:
+  - Jadval ustunlari: `tableCols = fieldCfg.visible('tx_table')` — dinamik `<th>/<td>` loop
+  - Detal top fields: `detailTopFields = fieldCfg.visible('tx_detail')` — dinamik render
+  - `displayType` bo'yicha: badge/amount/date/text — to'g'ri formatlash
+  - `onMounted`: `tx_table` + `tx_detail` parallel load
+- `CustomerProfilePanel.vue`:
+  - `profileFields` computed → config-driven (`fieldCfg.visible('profile')`)
+  - `resolveProfileField()` — har maydon uchun qiymat olish (passport, identified, is_blocked)
+  - Fallback: config bo'lmasa standart maydonlar ko'rinadi
+  - `fieldCfg.load('profile')` — setup'da bir marta yuklash
+- `AdminFieldConfigView.vue` — admin panel yangi sahifasi:
+  - 3 tab: Tranzaksiya jadval / Tranzaksiya detal / Mijoz profil
+  - Toggle switch (ko'rsat/yashir), tartib (▲▼), label edit, display_type select
+  - "Saqlash" tugmasi — bulk PATCH
+- `AdminLayout.vue` — "Maydon sozlash" nav item qo'shildi
+- `router/index.ts` — `/admin/field-configs` route qo'shildi
+- `locales/uz.json` + `ru.json` — `fieldConfig.*` + `admin.fieldConfig` kalitlar
+
+**Testlar:**
+- `multitenancy.test.ts` — 4 ta yangi test:
+  - `GET /field-configs?context=tx_table` → array qaytaradi ✓
+  - `GET /field-configs?context=profile` → phone, full_name bor ✓
+  - `PATCH /field-configs` → visibility yangilanadi ✓
+  - Yangi product → auto-seed defaults ✓
+- **58/58 PASS** (avval 54 edi)
+
+**Brauzer test tartibi:**
+1. Admin → Maydon sozlash → Tranzaksiya jadval tab
+2. `fiscal_number` yoki `strana` toggle off → Saqlash
+3. Operator → Tranzaksiya → o'sha ustun ko'rinmaydi
+4. Admin → Tranzaksiya detal tab → maydon yashir → Saqlash
+5. Operator → tranzaksiya detali → o'sha maydon ko'rinmaydi
+6. Mijoz profil tab → `is_blocked` on → Saqlash → profilga ko'rinadi
+7. Yangi product yaratish → field-config avtomatik default oladi
+
+---
+
 ## 2026-06-04 — Bildirishnoma: yangi murojaat ovoz + badge + tab title
 
 ### Qo'shildi / Tuzatildi

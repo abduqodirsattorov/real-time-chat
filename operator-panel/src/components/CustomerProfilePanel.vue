@@ -147,11 +147,13 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { customersApi, type CustomerProfile, type HistoryRoom } from '@/api/customers';
 import { useRoomsStore } from '@/stores/rooms';
+import { useFieldConfigsStore } from '@/stores/fieldConfigs';
 
 const { t } = useI18n();
 
 const props = defineProps<{ roomId: string | null }>();
 const rooms = useRoomsStore();
+const fieldCfg = useFieldConfigsStore();
 
 const customer = ref<CustomerProfile | null>(null);
 const loading = ref(false);
@@ -193,41 +195,53 @@ const initials = computed(() => {
   return parts.slice(0, 2).map((w: string) => w[0]?.toUpperCase() ?? '').join('') || 'MJ';
 });
 
-// ── Profile fields ──────────────────────────────────────────────────────────
+// ── Profile fields — config-driven ─────────────────────────────────────────
 const profileFields = computed(() => {
   const p = (customer.value?.profileData ?? {}) as Record<string, unknown>;
   const u = customer.value?.user;
-  const fields: { key: string; label: string; value: string; cls?: string }[] = [];
+  const configs = fieldCfg.visible('profile');
 
-  const add = (key: string, label: string, val: unknown, cls?: string) => {
-    if (val != null && val !== '') {
-      fields.push({ key, label, value: String(val), cls });
-    }
-  };
+  // Config bo'lmasa — fallback: standart maydonlar
+  const fallbackKeys = ['phone', 'full_name', 'passport', 'nationality', 'birthdate', 'language', 'uid', 'citizenship', 'identified', 'created'];
+  const keys = configs.length > 0 ? configs : fallbackKeys.map((k, i) => ({ fieldKey: k, label: k, visible: true, sortOrder: i, displayType: 'text' as const }));
 
-  add('phone', t('profile.phone'), p.phone ?? u?.phone);
-  add('full_name', t('profile.fullName'), p.full_name ?? (p.first_name ? `${p.first_name} ${p.last_name ?? ''}`.trim() : null));
-  add('passport', t('profile.passport'), p.passport_serial ? `${p.passport_serial} ${p.passport_number ?? ''}`.trim() : null);
-  add('nationality', t('profile.nationality'), p.nationality);
-  add('birthdate', t('profile.birthdate'), p.birthdate);
-  add('language', t('profile.language'), p.language);
-  add('uid', t('profile.uid'), p.uid ?? customer.value?.externalUid);
-  add('citizenship', t('profile.citizenship'), p.citizenship_id);
-
-  // Identifikatsiya holati
-  const identified = p.identified_at != null;
-  fields.push({
-    key: 'identified',
-    label: t('profile.identified'),
-    value: identified ? `✓ ${p.identified_at ?? ''}` : '✗',
-    cls: identified ? 'pp-ok' : 'pp-no',
-  });
-
-  add('is_blocked', t('profile.blocked'), p.is_blocked === true ? t('profile.yes') : null, 'pp-warn');
-  add('created', t('profile.registered'), u?.createdAt ? new Date(u.createdAt).toLocaleDateString() : null);
-
-  return fields;
+  return keys
+    .map((cfg) => {
+      const key = typeof cfg === 'string' ? cfg : cfg.fieldKey;
+      const label = typeof cfg === 'string' ? t(`profile.${key}`) : cfg.label;
+      const displayType = typeof cfg === 'string' ? 'text' : cfg.displayType;
+      const { value, cls } = resolveProfileField(key, p, u);
+      return { key, label, value, cls, displayType };
+    })
+    .filter((f) => f.value != null && f.value !== '');
 });
+
+function resolveProfileField(
+  key: string,
+  p: Record<string, unknown>,
+  u: CustomerProfile['user'],
+): { value: string | null; cls?: string } {
+  switch (key) {
+    case 'phone':      return { value: String(p.phone ?? u?.phone ?? '') || null };
+    case 'full_name':  return { value: p.full_name ? String(p.full_name) : (p.first_name ? `${p.first_name} ${p.last_name ?? ''}`.trim() : u?.fullName ?? null) };
+    case 'passport':   return { value: p.passport_serial ? `${p.passport_serial} ${p.passport_number ?? ''}`.trim() : null };
+    case 'nationality':return { value: p.nationality != null ? String(p.nationality) : null };
+    case 'birthdate':  return { value: p.birthdate != null ? String(p.birthdate) : null };
+    case 'language':   return { value: p.language != null ? String(p.language) : null };
+    case 'uid':        return { value: p.uid != null ? String(p.uid) : (customer.value?.externalUid ?? null) };
+    case 'citizenship':return { value: p.citizenship_id != null ? String(p.citizenship_id) : null };
+    case 'identified': {
+      const ok = p.identified_at != null;
+      return { value: ok ? `✓ ${p.identified_at ?? ''}` : '✗', cls: ok ? 'pp-ok' : 'pp-no' };
+    }
+    case 'is_blocked': return { value: p.is_blocked === true ? t('profile.yes') : null, cls: 'pp-warn' };
+    case 'created':    return { value: u?.createdAt ? new Date(u.createdAt).toLocaleDateString() : null };
+    default:           return { value: p[key] != null ? String(p[key]) : null };
+  }
+}
+
+// Profile config yuklash (bir marta)
+fieldCfg.load('profile');
 
 // ── Load on roomId change ───────────────────────────────────────────────────
 watch(() => props.roomId, async (id) => {

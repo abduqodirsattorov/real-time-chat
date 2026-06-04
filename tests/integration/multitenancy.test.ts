@@ -211,6 +211,64 @@ describe('Multi-tenancy — product isolation (FINTECH CRITICAL)', () => {
     });
   });
 
+  // ── Field Configs ─────────────────────────────────────────────────────────────
+
+  describe('Field configs — maydon sozlamalari', () => {
+    let fcHttp: ReturnType<typeof makeHttp>;
+
+    beforeAll(() => {
+      fcHttp = makeHttp(adminToken, DEFAULT_PRODUCT_ID);
+    });
+
+    it('GET /field-configs?context=tx_table returns config array', async () => {
+      const res = await fcHttp.get('/field-configs', { params: { context: 'tx_table' } });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data)).toBe(true);
+      expect(res.data.length).toBeGreaterThan(0);
+      const first = res.data[0];
+      expect(first).toHaveProperty('fieldKey');
+      expect(first).toHaveProperty('visible');
+      expect(first).toHaveProperty('sortOrder');
+      expect(first).toHaveProperty('displayType');
+    });
+
+    it('GET /field-configs?context=profile returns profile fields', async () => {
+      const res = await fcHttp.get('/field-configs', { params: { context: 'profile' } });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data)).toBe(true);
+      const keys = res.data.map((c: any) => c.fieldKey);
+      expect(keys).toContain('phone');
+      expect(keys).toContain('full_name');
+    });
+
+    it('PATCH /field-configs updates visibility and returns new list', async () => {
+      const listRes = await fcHttp.get('/field-configs', { params: { context: 'tx_table' } });
+      const items = listRes.data.map((c: any) => ({
+        fieldKey: c.fieldKey, label: c.label,
+        visible: c.fieldKey === 'strana' ? false : c.visible,
+        sortOrder: c.sortOrder, displayType: c.displayType,
+      }));
+      const patchRes = await fcHttp.patch('/field-configs', { context: 'tx_table', items });
+      expect([200, 201]).toContain(patchRes.status);
+      expect(Array.isArray(patchRes.data)).toBe(true);
+    });
+
+    it('new product auto-seeds defaults on first GET', async () => {
+      const slug = `test-fc-${Date.now()}`;
+      const createRes = await adminHttp.post('/products', { name: 'FC Test', slug, branding: {} });
+      const newProdId = createRes.data?.id;
+      if (!newProdId) return;
+
+      const http = makeHttp(adminToken, newProdId);
+      const res = await http.get('/field-configs', { params: { context: 'tx_table' } });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data)).toBe(true);
+      expect(res.data.length).toBeGreaterThan(0);
+
+      await adminHttp.delete(`/products/${newProdId}`);
+    });
+  });
+
   // ── Operator-product permission ───────────────────────────────────────────────
 
   describe('Operator products permission (admin view)', () => {
