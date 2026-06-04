@@ -1,6 +1,6 @@
 # Nova Chat & Call Platform — STATUS
 
-## Holat: To'liq ishlaydi (lokal)
+## Holat: To'liq ishlaydi (lokal) — 58/58 test PASS
 
 ## Ishlaydigan funksiyalar
 
@@ -32,53 +32,51 @@
 - Avatar, ism, telefon, pasport, millat, tug'ilgan sana, til, UID, fuqarolik, identifikatsiya holati
 - Teglar (qo'shish/o'chirish inline), izoh (click-to-edit, blur'da saqlash)
 - "Tranzaksiyalarini ko'rish" tugmasi → tranzaksiya bo'limiga o'tish (filter bilan)
+- Suhbat tarixi (collapsible): har oldingi suhbat, holat badge, oxirgi xabar, bosilganda ochiladi
 - API: GET /customers/by-room/:roomId, GET /customers/by-uid/:uid,
-  POST /customers/upsert, PATCH /customers/:id
+  POST /customers/upsert, PATCH /customers/:id, GET /customers/:id/history
 
 ### Tranzaksiya bo'limi (2-BOSQICH) ✅
 - `transactions` jadval: product_id, external_id, user_uid, data JSONB (universal — har format)
-- Jadval: ID, foydalanuvchi/telefon, debit/kredit status badge, servis, summalar, sana
+- Jadval: ustunlar field config bo'yicha dinamik (admin sozlaydi)
 - Qidiruv: telefon yoki ext_id bo'yicha (avtomatik, 400ms debounce)
 - Filtr: sana (dan/gacha), provider, tur, debit holati, kredit holati, strana — dropdown
 - Pagination: 20 ta/sahifa, sahifa raqamlari (ellipsis bilan)
 - Belgilash: har qatorda checkbox, "hammasini tanlash" (shu sahifa / barcha sahifalar)
 - Bulk amallar: 7 ta (stub — Nova API kerak)
-- Detal panel: asosiy maydonlar + "Barcha maydonlar" collapsible (15+ maydon)
+- Detal panel: field config bo'yicha top maydonlar + "Barcha maydonlar" collapsible
 - **Detalda Chat**: shu tranzaksiya egasining suhbati (collapsible, xabar yozish mumkin)
-  - Qo'ng'iroq tugmasi YO'Q, tezkor javoblar YO'Q
-  - Real-time Centrifugo subscription
 - Chatdan "Tranzaksiyalarini ko'rish" → avtomatik userUid filtr (banner telefon raqam ko'rsatadi)
-- Product izolyatsiya: operator faqat o'z product tranzaksiyalarini ko'radi
+- Product izolyatsiya
 - API: GET /transactions, GET /transactions/:id, POST /transactions/upsert
 
 ### Admin Field Config (4-BOSQICH) ✅
 - `field_configs` jadval: product_id, context (tx_table/tx_detail/profile), field_key, visible, sort_order, display_type
 - Yangi product → default config avtomatik (auto-seed)
-- Admin: toggle ko'rsat/yashir, tartib (▲▼), nom tahrirlash, display_type
-- Operator: tranzaksiya jadval + detal + profil — config bo'yicha render
-- API: GET /field-configs, PATCH /field-configs
-- 58/58 regressiya testi PASS
+- Admin UI: toggle ko'rsat/yashir, tartib (▲▼), nom tahrirlash, display_type (text/badge/amount/date)
+- Operator: tranzaksiya jadval + detal + profil — config bo'yicha dinamik render
+- 3 ta context — alohida tab: Tranzaksiya jadval / Tranzaksiya detal / Mijoz profil
+- API: GET /field-configs?context=..., PATCH /field-configs (bulk)
 
 ### Bildirishnoma (yangi murojaat) ✅
 - Yangi room assign → real-time: ovoz (Web Audio ding) + badge + tab title + brauzer notification
-- Yangi xabar → ovoz + unread badge + tab title `(N)` + brauzer notification
+- Yangi xabar → ovoz + unread badge + tab title `(N) Nova Chat — Operator` + brauzer notification
 - Call ringtone alohida — buzilmadi
-- Backend: `room.assigned` Centrifugo event via shaxsiy kanal
+- Backend: `room.assigned` Centrifugo event via shaxsiy kanal (`chat:user#<id>`)
 
 ### Operator status kengaytirish ✅
-- Holatlar: Mavjud / Band (busy) / Tanaffus (break) / Oflayn
-- ACD: faqat `available` operatorga call/chat (busy/break → yo'q)
+- Holatlar: Mavjud (available) / Band (busy) / Tanaffus (break) / Oflayn (offline)
+- ACD: faqat `available` operatorga call/chat (busy/break → ACD o'tkazib yuboradi)
 - Ranglar: yashil/sariq/ko'k/kulrang
-- Status flapping qaytmadi (test PASS)
-- 54/54 regressiya testi
+- Status flapping qaytmadi (reconnect watcher desiredStatus tiklaydi)
 
-### Mijoz suhbat tarixi ✅
-- Profil panelida "Suhbat tarixi" bo'limi (collapsible)
-- Har suhbat: holat badge (ochiq/yopiq/bot/kutilmoqda), sana, oxirgi xabar preview
-- Bosilganda → o'sha suhbat ochiladi (reaktiv)
-- Pagination: "Ko'proq" tugmasi (cursor-based)
-- Product izolyatsiya
-- API: GET /customers/:id/history
+### Suhbat teglari ✅
+- `tags` jadval: product_id, name, color — admin sozlaydigan teg katalogi
+- `rooms.tag_ids UUID[]` — operator room'ga teg qo'yadi
+- Admin: teg yaratish, tahrirlash, o'chirish (catalog)
+- Operator: room header'da teg badge + qo'shish/olib tashlash dropdown
+- Inbox filtr: teg bo'yicha filtrlash
+- API: GET/POST/PATCH/DELETE /tags, PATCH /rooms/:id/tags
 
 ### Inbox customer search ✅
 - Telefon raqam bo'yicha qidirganda yozishma bo'lmagan mijoz ham ko'rinadi
@@ -109,6 +107,13 @@
 - OTP olish: `docker compose logs auth-service | Select-String OTP`
 - **MUHIM:** login → product tanlash ekrani → "Davom etish" → "Mavjud" avtomatik
 
+## Test
+```powershell
+cd C:\Users\abduq\OneDrive\Documents\real-time-chat\tests\integration
+npx jest operator.test.ts multitenancy.test.ts transactions.test.ts --testTimeout=30000 --forceExit
+# → 58/58 PASS
+```
+
 ## Muhim texnik eslatmalar
 - Centrifugo kanal: `chat:room#<id>`, `chat:user#<id>` (# belgi bilan)
 - `operator_states` jadval ustuni: `user_id` (`operator_id` EMAS!)
@@ -121,6 +126,7 @@
 - Universal JSONB: transactions.data, customers.profile_data — har format (null/son/list/object)
 - `@IsUUID()` validator `00000000-0000-0000-0000-000000000002` ni qabul qilmaydi —
   productId fieldlarida `@IsString()` ishlatiladi (DB UUID formatni tekshiradi)
+- Field configs: yangi product birinchi `GET /field-configs` da auto-seed oladi
 
 ## Tuzatilgan regressiyalar (tarix CHANGELOG.md da)
 - Status flapping (operator available→offline 10s avtomatik)
@@ -132,18 +138,23 @@
 - Flutter 400: `@IsUUID()` → `@IsString()` (00000000-0000-0000-0000-000000000002 rejected)
 - Dublikat suhbatlar: DB unique index (partial) + Redis lock + DB tozalash
 
-## Keyingi bosqichlar (Nova API tayyor bo'lganda)
+## Keyingi bosqichlar
 
-**Kutilmoqda:**
+**Nova API tayyor bo'lganda:**
 - **3-BOSQICH:** Tranzaksiya actionlari (Recredit, Pulni qaytarish, Resend...) — Nova API kerak
-- **4-BOSQICH:** Admin field/action config UI — har product uchun qaysi maydon ko'rinsin
 - **5-BOSQICH:** Nova API real integratsiya — transfer/profile webhook, action API
 
-**Ochiq savollar:**
-- Nova API endpoint'lari va autentifikatsiya
-- Action'lar ro'yxati va rol matritsasi (kim qaysi action)
-- Real transfer/profile JSON namunasi (maydon turlari aniqlash)
-- Audit log talablari (fintech compliance)
+**Production deploy tayyor bo'lganda:**
+- Server (Ubuntu 22.04), HTTPS (Let's Encrypt), domen
+- `change_me` secret'larni almashtirish (JWT_SECRET, CENTRIFUGO_API_KEY, ...)
+- DB backup (pg_dump cron), Sentry error tracking
+- docker compose --env-file .env.prod up -d
+
+**Nova API integratsiya uchun kerak bo'ladi:**
+- Transfer endpoint (GET tranzaksiya, POST action)
+- Profile endpoint (GET mijoz profil)
+- Auth (token/key)
+- Real JSON namunasi (maydon turlari aniqlash uchun)
 
 ## Yangi chat ochganda
 Bu faylni o'qib boshlang: `@docs/STATUS.md`
