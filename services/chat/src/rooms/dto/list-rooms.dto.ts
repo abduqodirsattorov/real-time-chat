@@ -20,4 +20,9 @@ export class ListRoomsDto {
   @Min(1)
   @Max(100)
   limit?: number = 50;
+
+  /** Filter rooms by tag UUID */
+  @IsOptional()
+  @IsString()
+  tagId?: string;
 }

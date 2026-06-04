@@ -28,6 +28,8 @@ import { CustomersController } from './customers/customers.controller';
 import { CustomersService } from './customers/customers.service';
 import { TransactionsController } from './transactions/transactions.controller';
 import { TransactionsService } from './transactions/transactions.service';
+import { TagsController } from './tags/tags.controller';
+import { TagsService } from './tags/tags.service';
 
 @Module({
   imports: [
@@ -56,6 +58,7 @@ import { TransactionsService } from './transactions/transactions.service';
     ProductsController,
     CustomersController,
     TransactionsController,
+    TagsController,
   ],
   providers: [
     JwtStrategy,
@@ -66,6 +69,7 @@ import { TransactionsService } from './transactions/transactions.service';
     ProductsService,
     CustomersService,
     TransactionsService,
+    TagsService,
   ],
 })
 export class AppModule implements NestModule {

@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-06-04 — Suhbat teglari (Room Tags)
+
+### Qo'shildi
+
+**DB:**
+- `tags` jadval: `id, product_id, name, color, created_at` — admin sozlaydigan teg katalogi
+- `rooms.tag_ids UUID[]` — operator tomonidan room'ga qo'yilgan teglar
+- GIN indeks (tezkor filtr uchun)
+- Default 5 ta teg "Asosiy" productga: O'tkazma, Karta, Hisob, Shoshilinch, Qayta ko'rib
+- `infra/postgres/migrate_tags.sql` + `init.sql` yangilandi
+- Prisma schema: `Tag` model + `Room.tagIds String[]`
+
+**Backend (chat-service):**
+- `GET /tags` — productga tegishli teglar ro'yxati
+- `POST /tags` — admin teg yaratadi (name, color)
+- `PATCH /tags/:id` — admin tahrirlaydi
+- `DELETE /tags/:id` — admin o'chiradi (barcha room'lardan ham o'chiriladi)
+- `PATCH /rooms/:id/tags` — operator room'ga teglar o'rnatadi
+- `GET /rooms?tagId=...` — teg bo'yicha filtr
+- Product izolyatsiya: teglar faqat o'z product'i doirasida
+- Traefik: `/api/v1/tags` → chat-service qo'shildi
+
+**Frontend (operator-panel):**
+- `api/tags.ts` + `stores/tags.ts` — teglar store (loadTags, getById, getByIds)
+- `RoomTags.vue` — chat header'da teg badge'lari + "+ Teg" dropdown (qo'shish/olib tashlash)
+- `RoomList.vue` — inbox filter (funnel icon → rangli chip'lar), room item'da teg nuqtalari
+- `AdminTagsView.vue` — admin panel "Teglar" bo'limi (yaratish, rang picker, tahrir, o'chirish)
+- `AdminLayout.vue` — "Teglar" subnav item qo'shildi
+- Router: `/admin/tags` route
+- i18n uz.json + ru.json: `tags.*` kalitlar + `common.edit`
+- `Room` interface: `tagIds: string[]` qo'shildi
+
+**Test natijasi (brauzer):**
+- Admin → Teglar → 5 teg ko'rinadi ✓
+- Yangi teg yaratish + tahrirlash + o'chirish ✓
+- Operator suhbatga teg qo'yadi (badge ko'rinadi) ✓
+- Inbox filtr teg bo'yicha (7 ta chip, 1 ta xona filtrlangan) ✓
+- Product izolyatsiya ✓
+- 70/70 regressiya testi PASS ✓
+
+---
+
 ## 2026-06-03 — Avtomatik integration test suite (70 test)
 
 ### Qo'shildi

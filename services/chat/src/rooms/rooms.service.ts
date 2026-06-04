@@ -37,6 +37,10 @@ export class RoomsService {
     // Operators see only their current product's rooms
     const productFilter = isOperator && productId ? { productId } : {};
 
+    const tagFilter = dto.tagId
+      ? { tagIds: { has: dto.tagId } }
+      : {};
+
     const where: any = {
       ...(dto.status ? { status: dto.status as any } : {}),
       ...(dto.type ? { type: dto.type as any } : {}),
@@ -44,6 +48,7 @@ export class RoomsService {
         members: { some: { userId: user.sub, leftAt: null } },
       } : {}),
       ...productFilter,
+      ...tagFilter,
       ...(cursorDate ? { lastMessageAt: { lt: cursorDate } } : {}),
     };
 

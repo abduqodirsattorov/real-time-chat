@@ -72,7 +72,8 @@
     "logout": "Chiqish",
     "save": "Saqlash",
     "cancel": "Bekor qilish",
-    "delete": "O'chirish"
+    "delete": "O'chirish",
+    "edit": "Tahrirlash"
   },
   "calls": {
     "history": "Qo'ng'iroqlar",
@@ -167,6 +168,20 @@
     "bulkActions": "Amallar",
     "page": "Sahifa"
   },
+  "tags": {
+    "adminTitle": "Suhbat teglari",
+    "create": "Teg qo'shish",
+    "createTitle": "Yangi teg",
+    "editTitle": "Tegni tahrirlash",
+    "deleteTitle": "Tegni o'chirish",
+    "deleteConfirm": "\"{name}\" tegini o'chirishni tasdiqlaysizmi? Barcha suhbatlardan ham o'chiriladi.",
+    "noTags": "Teglar yo'q",
+    "name": "Nomi",
+    "namePlaceholder": "masalan: O'tkazma, Shoshilinch...",
+    "color": "Rangi",
+    "addTag": "Teg",
+    "removeTag": "Tegni o'chirish"
+  },
   "admin": {
     "title": "Administratorlar",
     "users": "Foydalanuvchilar",
@@ -213,6 +228,7 @@
     "deleteProductConfirm": "\"{name}\" productini o'chirishni tasdiqlaysizmi?",
     "slugHint": "Faqat lotin harflari, raqamlar va chiziqcha (masalan: my-product)",
     "productAccess": "Product ruxsati (qaysi ilovalar)",
-    "productAccessHint": "Bu operator qaysi ilovaлar bilan ishlashi mumkinligini tanlang."
+    "productAccessHint": "Bu operator qaysi ilovaлar bilan ishlashi mumkinligini tanlang.",
+    "tags": "Teglar"
   }
 }

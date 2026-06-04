@@ -3,16 +3,21 @@ import {
   Query, UseGuards, HttpCode, HttpStatus, Headers,
 } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
+import { TagsService } from '../tags/tags.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { ListRoomsDto } from './dto/list-rooms.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
+import { SetRoomTagsDto } from '../tags/dto/tags.dto';
 
 @Controller('rooms')
 @UseGuards(JwtAuthGuard)
 export class RoomsController {
-  constructor(private readonly rooms: RoomsService) {}
+  constructor(
+    private readonly rooms: RoomsService,
+    private readonly tags: TagsService,
+  ) {}
 
   @Get()
   list(
@@ -55,5 +60,16 @@ export class RoomsController {
   @HttpCode(HttpStatus.OK)
   close(@CurrentUser() user: JwtUser, @Param('id') id: string) {
     return this.rooms.close(user, id);
+  }
+
+  @Patch(':id/tags')
+  @HttpCode(HttpStatus.OK)
+  setTags(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: SetRoomTagsDto,
+    @Headers('x-product-id') productId?: string,
+  ) {
+    return this.tags.setRoomTags(user, id, dto.tagIds, productId);
   }
 }

@@ -104,8 +104,25 @@ model Product {
   rooms        Room[]
   customers    Customer[]
   transactions Transaction[]
+  tags         Tag[]
 
   @@map("products")
+}
+
+// ── Tag (product-scoped, admin sozlaydi) ──────────────────────────────────────
+
+model Tag {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  name      String   @db.VarChar(64)
+  color     String   @default("#6B7280") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@map("tags")
 }
 
 // ── Room ──────────────────────────────────────────────────────────────────────
@@ -123,6 +140,7 @@ model Room {
   botHandled         Boolean    @default(false) @map("bot_handled")
   escalatedAt        DateTime?  @map("escalated_at") @db.Timestamptz()
   metadata           Json       @default("{}")
+  tagIds             String[]   @default([]) @map("tag_ids") @db.Uuid
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   closedAt           DateTime?  @map("closed_at") @db.Timestamptz()
 

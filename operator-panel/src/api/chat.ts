@@ -11,6 +11,7 @@ export interface Room {
   operatorId: string | null;
   lastMessageAt: string | null;
   botHandled: boolean;
+  tagIds: string[];
   createdAt: string;
   closedAt: string | null;
   members: { userId: string; joinedAt: string }[];

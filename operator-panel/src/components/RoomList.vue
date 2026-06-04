@@ -6,12 +6,35 @@
       <div class="rl-title-row">
         <h2 class="rl-title">Inbox</h2>
         <span v-if="rooms.totalUnread > 0" class="rl-total-badge">{{ rooms.totalUnread }}</span>
-        <button class="rl-filter-btn" title="Filter">
+        <button
+          class="rl-filter-btn"
+          :class="{ active: activeTagId || showTagFilter }"
+          title="Teg filtr"
+          @click="showTagFilter = !showTagFilter"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
           </svg>
         </button>
       </div>
+
+      <!-- Tag filter bar -->
+      <div v-if="showTagFilter" class="rl-tag-filter">
+        <button
+          class="tag-filter-chip"
+          :class="{ selected: !activeTagId }"
+          @click="activeTagId = null"
+        >Barchasi</button>
+        <button
+          v-for="tag in tagsStore.tags"
+          :key="tag.id"
+          class="tag-filter-chip"
+          :class="{ selected: activeTagId === tag.id }"
+          :style="activeTagId === tag.id ? { background: tag.color, borderColor: tag.color, color: '#fff' } : { borderColor: tag.color, color: tag.color }"
+          @click="activeTagId = activeTagId === tag.id ? null : tag.id"
+        >{{ tag.name }}</button>
+      </div>
+
       <div class="rl-search-wrap">
         <svg class="rl-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -107,6 +130,16 @@
               {{ unreadCount(room.id) > 99 ? '99+' : unreadCount(room.id) }}
             </span>
           </div>
+          <!-- Tag dots -->
+          <div v-if="room.tagIds?.length" class="room-tag-dots">
+            <span
+              v-for="tagId in room.tagIds.slice(0, 3)"
+              :key="tagId"
+              class="room-tag-dot"
+              :style="{ background: tagsStore.getById(tagId)?.color ?? '#9CA3AF' }"
+              :title="tagsStore.getById(tagId)?.name"
+            />
+          </div>
         </div>
       </div>
 
@@ -146,6 +179,7 @@ import { useRouter } from 'vue-router';
 import { useRoomsStore } from '@/stores/rooms';
 import { useCallsStore } from '@/stores/calls';
 import { useAuthStore } from '@/stores/auth';
+import { useTagsStore } from '@/stores/tags';
 import { chatApi, type Room } from '@/api/chat';
 
 const { t } = useI18n();
@@ -153,7 +187,10 @@ const router = useRouter();
 const rooms = useRoomsStore();
 const calls = useCallsStore();
 const auth = useAuthStore();
+const tagsStore = useTagsStore();
 const search = ref('');
+const showTagFilter = ref(false);
+const activeTagId = ref<string | null>(null);
 
 // ── Call timer ──────────────────────────────────────────────────────────────
 
@@ -182,6 +219,8 @@ watch(() => calls.activeCall, (val) => {
 }, { immediate: true });
 
 onUnmounted(stopTimer);
+
+onMounted(() => { tagsStore.loadTags(); });
 
 // ── Caller info ─────────────────────────────────────────────────────────────
 
@@ -237,12 +276,15 @@ function lastPreview(roomId: string, status: string): string {
 
 const filteredRooms = computed(() => {
   const q = search.value.toLowerCase().trim();
-  if (!q) return rooms.rooms.filter(r => r.status !== 'closed');
-  return rooms.rooms.filter((r) =>
-    r.status !== 'closed' &&
-    (roomLabel(r).toLowerCase().includes(q) ||
-     (r.customerPhone ?? '').toLowerCase().includes(q)),
-  );
+  return rooms.rooms.filter((r) => {
+    if (r.status === 'closed') return false;
+    if (activeTagId.value && !(r.tagIds ?? []).includes(activeTagId.value)) return false;
+    if (!q) return true;
+    return (
+      roomLabel(r).toLowerCase().includes(q) ||
+      (r.customerPhone ?? '').toLowerCase().includes(q)
+    );
+  });
 });
 
 // Customer search (phone search — no active room case)
@@ -328,6 +370,25 @@ function formatTime(iso: string) {
   transition: background 0.12s;
 }
 .rl-filter-btn:hover { background: var(--c-surface); }
+.rl-filter-btn.active { background: var(--c-accent-bg); color: var(--c-accent); border-color: var(--c-accent); }
+
+/* Tag filter chips */
+.rl-tag-filter {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 16px 4px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.tag-filter-chip {
+  font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: var(--r-full);
+  border: 1.5px solid var(--c-border);
+  background: transparent; color: var(--c-text-2);
+  cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.tag-filter-chip:hover { background: var(--c-border); }
+.tag-filter-chip.selected { background: var(--c-accent); border-color: var(--c-accent); color: #fff; }
 
 .rl-search-wrap { position: relative; }
 .rl-search-icon {
@@ -481,6 +542,12 @@ function formatTime(iso: string) {
 }
 
 .rl-empty { padding: 40px 20px; text-align: center; color: var(--c-text-3); font-size: 13px; }
+
+/* Room tag dots */
+.room-tag-dots { display: flex; gap: 4px; margin-top: 3px; }
+.room-tag-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
 
 .rl-customer-section { border-top: 1px solid var(--c-border); padding: 4px 0; }
 .rl-section-label { padding: 6px 16px 2px; font-size: 11px; font-weight: 700; color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.04em; }

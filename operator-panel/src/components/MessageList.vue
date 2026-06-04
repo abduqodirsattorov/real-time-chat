@@ -1,7 +1,10 @@
 <template>
   <div class="message-list-wrapper">
     <div class="message-list-header">
-      <div v-if="room" class="room-title">{{ roomLabel }}</div>
+      <div class="header-left">
+        <div v-if="room" class="room-title">{{ roomLabel }}</div>
+        <RoomTags :room-id="props.roomId" />
+      </div>
       <div class="header-actions">
         <button
           v-if="room && room.status !== 'closed'"
@@ -64,6 +67,7 @@ import MediaImage from './media/MediaImage.vue';
 import MediaVideo from './media/MediaVideo.vue';
 import MediaAudio from './media/MediaAudio.vue';
 import MediaFile from './media/MediaFile.vue';
+import RoomTags from './RoomTags.vue';
 import { useI18n } from 'vue-i18n';
 import { useRoomsStore } from '@/stores/rooms';
 import { useAuthStore } from '@/stores/auth';
@@ -194,6 +198,14 @@ function formatTime(iso: string) {
 }
 
 /* ── Header ── */
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
 .message-list-header {
   display: flex;
   align-items: center;

@@ -65,6 +65,11 @@ export const router = createRouter({
               name: 'admin-products',
               component: () => import('@/views/admin/AdminProductsView.vue'),
             },
+            {
+              path: 'tags',
+              name: 'admin-tags',
+              component: () => import('@/views/admin/AdminTagsView.vue'),
+            },
           ],
         },
       ],
