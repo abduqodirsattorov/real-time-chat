@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## 2026-06-04 — Mijoz suhbat tarixi (Customer Chat History)
+
+### Qo'shildi
+
+**Backend (chat-service):**
+- `GET /customers/:id/history` — mijozning barcha oldingi suhbatlari (rooms)
+  - Pagination: cursor-based (createdAt DESC), 10 ta/sahifa
+  - Product izolyatsiya: operator faqat o'z product mijozlarini ko'ra oladi
+  - Oxirgi xabar: har xona uchun bitta raw SQL query (`DISTINCT ON room_id`) — samarali
+  - Qaytariladi: `{ items, hasMore, nextCursor }`
+  - Har item: `id, status, createdAt, closedAt, lastMessageAt, tagIds, lastMessage`
+
+**Frontend (operator-panel):**
+- `api/customers.ts` — `HistoryRoom`, `CustomerHistory` tiplar qo'shildi
+- `customersApi.getHistory(customerId, params?)` method qo'shildi
+- `CustomerProfilePanel.vue` — yangi "Suhbat tarixi" bo'limi:
+  - Collapsible (default: yopiq)
+  - Har suhbat: holat badge (ochiq/kutilmoqda/bot/yopiq), sana, oxirgi xabar preview
+  - Holat ranglari: ochiq=ko'k, kutilmoqda=sariq, bot=binafsha, yopiq=kulrang
+  - Bosilganda → o'sha suhbat ochiladi (rooms.selectRoom bilan reaktiv)
+  - "Ko'proq" tugmasi — cursor pagination
+  - Xona almashganda tarix avtomatik yangilanadi
+- `locales/uz.json` + `ru.json` — `profile.chatHistory` va boshqa kalitlar
+
+**Test natijalari:**
+- Backend endpoint: 2 ta oldingi suhbat topildi (oxirgi xabar bilan) ✓
+- 48/48 regressiya testi PASS ✓
+- Product izolyatsiya: boshqa product customer → 403 ✓
+
+---
+
 ## 2026-06-04 — Suhbat teglari (Room Tags)
 
 ### Qo'shildi

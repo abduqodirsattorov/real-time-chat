@@ -1,5 +1,21 @@
 import { api } from './client';
 
+export interface HistoryRoom {
+  id: string;
+  status: string;
+  createdAt: string;
+  closedAt: string | null;
+  lastMessageAt: string | null;
+  tagIds: string[];
+  lastMessage: { content: string; type: string } | null;
+}
+
+export interface CustomerHistory {
+  items: HistoryRoom[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
 export interface CustomerProfile {
   id: string;
   productId: string;
@@ -39,5 +55,9 @@ export const customersApi = {
     profileData?: Record<string, unknown>;
   }): Promise<CustomerProfile> {
     return api.patch(`/customers/${id}`, data).then((r) => r.data);
+  },
+
+  getHistory(customerId: string, params?: { limit?: number; cursor?: string }): Promise<CustomerHistory> {
+    return api.get(`/customers/${customerId}/history`, { params }).then((r) => r.data);
   },
 };

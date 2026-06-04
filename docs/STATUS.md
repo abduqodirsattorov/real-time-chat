@@ -51,6 +51,14 @@
 - Product izolyatsiya: operator faqat o'z product tranzaksiyalarini ko'radi
 - API: GET /transactions, GET /transactions/:id, POST /transactions/upsert
 
+### Mijoz suhbat tarixi ✅
+- Profil panelida "Suhbat tarixi" bo'limi (collapsible)
+- Har suhbat: holat badge (ochiq/yopiq/bot/kutilmoqda), sana, oxirgi xabar preview
+- Bosilganda → o'sha suhbat ochiladi (reaktiv)
+- Pagination: "Ko'proq" tugmasi (cursor-based)
+- Product izolyatsiya
+- API: GET /customers/:id/history
+
 ### Inbox customer search ✅
 - Telefon raqam bo'yicha qidirganda yozishma bo'lmagan mijoz ham ko'rinadi
 - "Mijoz" bo'limi: suhbati bor → room ochiladi; yo'q → ko'rsatiladi

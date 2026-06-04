@@ -85,6 +85,75 @@ export class CustomersService {
     });
   }
 
+  // ── GET chat history ───────────────────────────────────────────────────────
+  async getHistory(
+    user: JwtUser,
+    customerId: string,
+    productId: string,
+    limit = 10,
+    cursor?: string,
+  ) {
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
+
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Mijoz topilmadi');
+    if (customer.productId !== productId) throw new ForbiddenException();
+
+    const userId = customer.userId;
+    if (!userId) return { items: [], hasMore: false, nextCursor: null };
+
+    let cursorDate: Date | undefined;
+    if (cursor) {
+      try { cursorDate = new Date(Buffer.from(cursor, 'base64').toString('utf8')); } catch {}
+    }
+
+    const rooms = await this.prisma.room.findMany({
+      where: {
+        customerId: userId,
+        productId: customer.productId,
+        ...(cursorDate ? { createdAt: { lt: cursorDate } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+    });
+
+    const hasMore = rooms.length > limit;
+    const items = hasMore ? rooms.slice(0, limit) : rooms;
+
+    if (items.length === 0) return { items: [], hasMore: false, nextCursor: null };
+
+    // Oxirgi xabarni har xona uchun bitta so'rovda olamiz
+    const roomIds = items.map((r) => r.id);
+    const lastMsgs: Array<{ room_id: string; content: string; type: string }> =
+      await this.prisma.$queryRaw`
+        SELECT DISTINCT ON (room_id) room_id, content, type
+        FROM messages
+        WHERE room_id = ANY(${roomIds}::uuid[])
+        ORDER BY room_id, created_at DESC
+      `;
+    const msgMap = new Map(lastMsgs.map((m) => [m.room_id, m]));
+
+    const nextCursor = hasMore
+      ? Buffer.from(items[items.length - 1].createdAt.toISOString()).toString('base64')
+      : null;
+
+    return {
+      items: items.map((r) => ({
+        id: r.id,
+        status: r.status,
+        createdAt: r.createdAt,
+        closedAt: r.closedAt,
+        lastMessageAt: r.lastMessageAt,
+        tagIds: r.tagIds,
+        lastMessage: msgMap.has(r.id)
+          ? { content: msgMap.get(r.id)!.content, type: msgMap.get(r.id)!.type }
+          : null,
+      })),
+      hasMore,
+      nextCursor,
+    };
+  }
+
   // ── PATCH notes/tags ───────────────────────────────────────────────────────
   async update(user: JwtUser, id: string, dto: UpdateCustomerDto) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();

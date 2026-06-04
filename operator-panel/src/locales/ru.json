@@ -124,7 +124,14 @@
     "identified": "Идентификация",
     "blocked": "Заблокирован",
     "yes": "Да",
-    "registered": "Зарегистрирован"
+    "registered": "Зарегистрирован",
+    "chatHistory": "История чатов",
+    "noHistory": "История пуста",
+    "historyLoadMore": "Ещё",
+    "historyOpen": "Открыт",
+    "historyClosed": "Закрыт",
+    "historyPending": "Ожидание",
+    "historyBot": "Бот"
   },
   "transactions": {
     "title": "Транзакции",

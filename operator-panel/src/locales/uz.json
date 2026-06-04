@@ -124,7 +124,14 @@
     "identified": "Identifikatsiya",
     "blocked": "Bloklangan",
     "yes": "Ha",
-    "registered": "Ro'yxatdan o'tgan"
+    "registered": "Ro'yxatdan o'tgan",
+    "chatHistory": "Suhbat tarixi",
+    "noHistory": "Tarix yo'q",
+    "historyLoadMore": "Ko'proq",
+    "historyOpen": "Ochiq",
+    "historyClosed": "Yopiq",
+    "historyPending": "Kutilmoqda",
+    "historyBot": "Bot"
   },
   "transactions": {
     "title": "Tranzaksiyalar",

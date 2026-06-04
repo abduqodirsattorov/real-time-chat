@@ -93,6 +93,38 @@
           </div>
         </div>
 
+        <!-- Chat history -->
+        <div class="pp-section">
+          <div class="pp-section-header" @click="historyOpen = !historyOpen">
+            <div class="pp-section-title">{{ t('profile.chatHistory') }}</div>
+            <svg class="pp-chevron-sm" :class="{ open: historyOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </div>
+
+          <template v-if="historyOpen">
+            <div v-if="historyLoading" class="pp-history-empty">{{ t('common.loading') }}</div>
+            <div v-else-if="historyItems.length === 0" class="pp-history-empty">{{ t('profile.noHistory') }}</div>
+            <div v-else class="pp-history-list">
+              <div
+                v-for="room in historyItems"
+                :key="room.id"
+                class="pp-history-item"
+                @click="openHistoryRoom(room.id)"
+              >
+                <div class="pp-history-top">
+                  <span class="pp-history-badge" :class="`pp-hbadge-${room.status}`">{{ historyStatusLabel(room.status) }}</span>
+                  <span class="pp-history-date">{{ formatHistoryDate(room.createdAt) }}</span>
+                </div>
+                <div v-if="room.lastMessage" class="pp-history-msg">{{ formatLastMsg(room.lastMessage) }}</div>
+              </div>
+            </div>
+            <button v-if="historyHasMore && !historyLoading" class="pp-history-more" @click.stop="loadMoreHistory">
+              {{ t('profile.historyLoadMore') }}
+            </button>
+          </template>
+        </div>
+
         <!-- Transactions button -->
         <button class="pp-txn-btn" @click="goToTransactions">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -113,15 +145,24 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import { customersApi, type CustomerProfile } from '@/api/customers';
+import { customersApi, type CustomerProfile, type HistoryRoom } from '@/api/customers';
+import { useRoomsStore } from '@/stores/rooms';
 
 const { t } = useI18n();
 
 const props = defineProps<{ roomId: string | null }>();
+const rooms = useRoomsStore();
 
 const customer = ref<CustomerProfile | null>(null);
 const loading = ref(false);
 const isCollapsed = ref(false);
+
+// Chat history
+const historyOpen = ref(false);
+const historyLoading = ref(false);
+const historyItems = ref<HistoryRoom[]>([]);
+const historyHasMore = ref(false);
+const historyCursor = ref<string | null>(null);
 
 // Notes editing
 const editingNotes = ref(false);
@@ -193,13 +234,85 @@ watch(() => props.roomId, async (id) => {
   if (!id) { customer.value = null; return; }
   loading.value = true;
   customer.value = null;
+  historyItems.value = [];
+  historyHasMore.value = false;
+  historyCursor.value = null;
   try {
     customer.value = await customersApi.getByRoom(id);
     notesValue.value = customer.value?.notes ?? '';
+    // Tarix panel ochiq bo'lsa — darhol yuklash
+    if (historyOpen.value && customer.value) await fetchHistory();
   } finally {
     loading.value = false;
   }
 }, { immediate: true });
+
+// Tarix panel ochilganda yuklash
+watch(historyOpen, async (open) => {
+  if (open && customer.value && historyItems.value.length === 0) {
+    await fetchHistory();
+  }
+});
+
+async function fetchHistory(append = false) {
+  if (!customer.value) return;
+  historyLoading.value = true;
+  try {
+    const res = await customersApi.getHistory(customer.value.id, {
+      limit: 10,
+      cursor: append ? (historyCursor.value ?? undefined) : undefined,
+    });
+    if (append) {
+      historyItems.value = [...historyItems.value, ...res.items];
+    } else {
+      historyItems.value = res.items;
+    }
+    historyHasMore.value = res.hasMore;
+    historyCursor.value = res.nextCursor;
+  } catch {
+    // network error — tarix bo'sh ko'rinadi
+  } finally {
+    historyLoading.value = false;
+  }
+}
+
+async function loadMoreHistory() {
+  await fetchHistory(true);
+}
+
+async function openHistoryRoom(roomId: string) {
+  await rooms.selectRoom(roomId);
+}
+
+function historyStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    open: t('profile.historyOpen'),
+    pending: t('profile.historyPending'),
+    bot_handling: t('profile.historyBot'),
+    closed: t('profile.historyClosed'),
+  };
+  return map[status] ?? status;
+}
+
+function formatHistoryDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function formatLastMsg(msg: { content: string; type: string }): string {
+  const typeIcons: Record<string, string> = {
+    image: '📷',
+    video: '🎬',
+    audio: '🎤',
+    voice: '🎤',
+    file: '📎',
+    call_log: '📞',
+    system: '⚙️',
+    bot_card: '🤖',
+  };
+  if (typeIcons[msg.type]) return `${typeIcons[msg.type]} ${msg.content ?? ''}`.trim();
+  return msg.content?.slice(0, 60) ?? '';
+}
 
 // ── Notes ───────────────────────────────────────────────────────────────────
 function startEditNotes() {
@@ -486,6 +599,94 @@ function goToTransactions() {
   font-family: inherit;
   line-height: 1.5;
 }
+
+/* Section header with toggle */
+.pp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.pp-section-header:hover .pp-section-title { color: var(--c-accent); }
+.pp-chevron-sm {
+  transition: transform 0.2s;
+  color: var(--c-text-3);
+  flex-shrink: 0;
+}
+.pp-chevron-sm.open { transform: rotate(180deg); }
+
+/* History list */
+.pp-history-empty {
+  font-size: 12px;
+  color: var(--c-text-3);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.pp-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pp-history-item {
+  padding: 8px 10px;
+  background: var(--c-surface);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color 0.12s, background 0.12s;
+}
+.pp-history-item:hover { border-color: var(--c-accent); background: var(--c-accent-bg); }
+
+.pp-history-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.pp-history-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--r-full);
+  flex-shrink: 0;
+}
+.pp-hbadge-open    { background: #dbeafe; color: #1e40af; }
+.pp-hbadge-pending { background: #fef3c7; color: #92400e; }
+.pp-hbadge-bot_handling { background: #ede9fe; color: #5b21b6; }
+.pp-hbadge-closed  { background: var(--c-surface); color: var(--c-text-3); border: 1px solid var(--c-border); }
+
+.pp-history-date {
+  font-size: 11px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+}
+
+.pp-history-msg {
+  font-size: 11px;
+  color: var(--c-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-history-more {
+  width: 100%;
+  background: none;
+  border: 1px dashed var(--c-border);
+  color: var(--c-text-2);
+  font-size: 11px;
+  padding: 5px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  margin-top: 4px;
+  transition: border-color 0.12s, color 0.12s;
+}
+.pp-history-more:hover { border-color: var(--c-accent); color: var(--c-accent); }
 
 /* Transactions button */
 .pp-txn-btn {

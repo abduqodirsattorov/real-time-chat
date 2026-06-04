@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, Headers, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { CustomersService } from './customers.service';
@@ -12,6 +12,17 @@ export class CustomersController {
   @Get('by-room/:roomId')
   getByRoom(@CurrentUser() user: JwtUser, @Param('roomId') roomId: string) {
     return this.customers.getByRoom(user, roomId);
+  }
+
+  @Get(':id/history')
+  getHistory(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Headers('x-product-id') productId: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.customers.getHistory(user, id, productId, limit ? +limit : 10, cursor);
   }
 
   @Get('by-uid/:uid')
