@@ -54,6 +54,7 @@
   "presence": {
     "available": "Mavjud",
     "busy": "Band",
+    "break": "Tanaffus",
     "away": "Uzoqda",
     "offline": "Oflayn"
   },

@@ -7,11 +7,12 @@ export enum OperatorStatusEnum {
   away        = 'away',
   on_call     = 'on_call',
   in_transfer = 'in_transfer',
+  break       = 'break',
 }
 
 export class UpdateStatusDto {
   @IsEnum(OperatorStatusEnum, {
-    message: 'status qiymati notog\'ri. Ruxsat etilgan: offline, available, busy, away, on_call, in_transfer',
+    message: 'status qiymati notog\'ri. Ruxsat etilgan: offline, available, busy, away, on_call, in_transfer, break',
   })
   status: OperatorStatusEnum;
 }

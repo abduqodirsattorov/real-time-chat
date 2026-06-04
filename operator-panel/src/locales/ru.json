@@ -54,6 +54,7 @@
   "presence": {
     "available": "Доступен",
     "busy": "Занят",
+    "break": "Перерыв",
     "away": "Отошёл",
     "offline": "Офлайн"
   },

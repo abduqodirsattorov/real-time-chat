@@ -221,7 +221,7 @@ CREATE TABLE attachments (
 
 -- ── Operator states ────────────────────────────────────────────────────────────
 CREATE TYPE operator_status AS ENUM (
-  'offline', 'available', 'busy', 'away', 'on_call', 'in_transfer'
+  'offline', 'available', 'busy', 'away', 'on_call', 'in_transfer', 'break'
 );
 
 CREATE TABLE operator_states (

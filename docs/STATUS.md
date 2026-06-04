@@ -51,6 +51,13 @@
 - Product izolyatsiya: operator faqat o'z product tranzaksiyalarini ko'radi
 - API: GET /transactions, GET /transactions/:id, POST /transactions/upsert
 
+### Operator status kengaytirish ✅
+- Holatlar: Mavjud / Band (busy) / Tanaffus (break) / Oflayn
+- ACD: faqat `available` operatorga call/chat (busy/break → yo'q)
+- Ranglar: yashil/sariq/ko'k/kulrang
+- Status flapping qaytmadi (test PASS)
+- 54/54 regressiya testi
+
 ### Mijoz suhbat tarixi ✅
 - Profil panelida "Suhbat tarixi" bo'limi (collapsible)
 - Har suhbat: holat badge (ochiq/yopiq/bot/kutilmoqda), sana, oxirgi xabar preview

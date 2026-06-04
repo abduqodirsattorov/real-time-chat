@@ -161,7 +161,7 @@ const avatarRef = ref<HTMLElement | null>(null);
 const statuses: { value: OperatorStatus }[] = [
   { value: 'available' },
   { value: 'busy' },
-  { value: 'away' },
+  { value: 'break' },
   { value: 'offline' },
 ];
 
@@ -355,6 +355,7 @@ onUnmounted(() => {
 
 .status-dot.available { background: var(--c-online); }
 .status-dot.busy { background: var(--c-busy); }
+.status-dot.break { background: #60a5fa; }
 .status-dot.away { background: var(--c-away); }
 .status-dot.offline { background: var(--c-offline); }
 .status-dot.on_call { background: var(--c-red); }
@@ -441,6 +442,7 @@ onUnmounted(() => {
 }
 .status-dot-sm.available { background: var(--c-online); }
 .status-dot-sm.busy { background: var(--c-busy); }
+.status-dot-sm.break { background: #60a5fa; }
 .status-dot-sm.away { background: var(--c-away); }
 .status-dot-sm.offline { background: var(--c-offline); }
 

@@ -100,6 +100,70 @@ describe('Operator — regression tests', () => {
     }, 15000);
   });
 
+  // ── Extended status: busy, break (Tanaffus) ────────────────────────────────
+
+  describe('Extended operator statuses (busy, break)', () => {
+    afterEach(async () => {
+      // Har testdan keyin available ga qaytish
+      await adminHttp.post('/operator/status', { status: 'available' });
+    });
+
+    it('setStatus busy returns 200 with status=busy', async () => {
+      const res = await adminHttp.post('/operator/status', { status: 'busy' });
+      expect([200, 201]).toContain(res.status);
+      expect(res.data.status).toBe('busy');
+    });
+
+    it('setStatus break returns 200 with status=break', async () => {
+      const res = await adminHttp.post('/operator/status', { status: 'break' });
+      expect([200, 201]).toContain(res.status);
+      expect(res.data.status).toBe('break');
+    });
+
+    it('invalid status returns 400', async () => {
+      const res = await adminHttp.post('/operator/status', { status: 'lunch_extra_invalid' });
+      expect(res.status).toBe(400);
+    });
+
+    it('busy operator NOT in operator:available (ACD isolation)', async () => {
+      await adminHttp.post('/operator/status', { status: 'available' });
+      const before = await adminHttp.get('/operator/online');
+      const setRes = await adminHttp.post('/operator/status', { status: 'busy' });
+      const myId = setRes.data.userId;
+
+      const after = await adminHttp.get('/operator/online');
+      const operators: any[] = after.data?.operators ?? [];
+      const me = operators.find((op: any) => op.id === myId);
+      // Band operator available ro'yxatida bo'lmasligi kerak
+      expect(me).toBeUndefined();
+    });
+
+    it('break operator NOT in operator:available (ACD isolation)', async () => {
+      await adminHttp.post('/operator/status', { status: 'available' });
+      const setRes = await adminHttp.post('/operator/status', { status: 'break' });
+      const myId = setRes.data.userId;
+
+      const after = await adminHttp.get('/operator/online');
+      const operators: any[] = after.data?.operators ?? [];
+      const me = operators.find((op: any) => op.id === myId);
+      // Tanaffusdagi operator available ro'yxatida bo'lmasligi kerak
+      expect(me).toBeUndefined();
+    });
+
+    it('break → available restores ACD routing', async () => {
+      const setRes1 = await adminHttp.post('/operator/status', { status: 'break' });
+      const myId = setRes1.data.userId;
+      const setRes2 = await adminHttp.post('/operator/status', { status: 'available' });
+      expect(setRes2.data.status).toBe('available');
+
+      const after = await adminHttp.get('/operator/online');
+      const operators: any[] = after.data?.operators ?? [];
+      const me = operators.find((op: any) => op.id === myId);
+      expect(me).toBeDefined();
+      expect(me?.status).toBe('available');
+    });
+  });
+
   // ── Default product ID accepted (REGRESSION: @IsUUID() rejected 000...002) ──
 
   describe('Default product ID regression', () => {

@@ -1,5 +1,44 @@
 # CHANGELOG
 
+## 2026-06-04 — Operator status kengaytirish (busy/break/tanaffus)
+
+### Qo'shildi
+
+**DB:**
+- `operator_status` ENUM: `break` qo'shildi (avval: offline/available/busy/away/on_call/in_transfer)
+- `infra/postgres/migrate_break_status.sql` — mavjud DBga xavfsiz `ALTER TYPE ... ADD VALUE IF NOT EXISTS`
+- `infra/postgres/init.sql` yangilandi (Prisma bilan ayni)
+
+**Backend (presence-service):**
+- `UpdateStatusDto` — `break` qo'shildi, Prisma schema yangilandi, rebuild
+- `handleOperatorDisconnect` — `break` holatdagi operator ham disconnectda offline bo'ladi
+  (reconnect watcher `desiredStatus` ni tiklaydi — status flapping xavfi yo'q)
+- ACD (`findAvailableOperator`) o'zgartirilmadi — allaqachon faqat `available` qabul qiladi
+  Redis Lua atomicStatusUpdate: `available` → ZADD, boshqa har nima → ZREM (shu jumladan `break`)
+
+**Frontend (operator-panel):**
+- `api/presence.ts` — `OperatorStatus` type: `break` qo'shildi
+- `MainLayout.vue` — status selector: `available / busy / break / offline` (4 variant, `away` yashirildi)
+- CSS: `.status-dot.break { background: #60a5fa }` (ko'k rang — tanaffus)
+- `locales/uz.json` — `break: "Tanaffus"`, `locales/ru.json` — `break: "Перерыв"`
+
+**Testlar:**
+- `operator.test.ts` — 6 ta yangi test qo'shildi:
+  - `setStatus busy` → 200, status=busy ✓
+  - `setStatus break` → 200, status=break ✓
+  - Noto'g'ri status → 400 ✓
+  - Band operator `operator:available` da yo'q (ACD izolyatsiya) ✓
+  - Tanaffus operator `operator:available` da yo'q (ACD izolyatsiya) ✓
+  - break → available → ACD routing tiklandi ✓
+- **54/54 PASS** (avval 48 edi)
+- Status flapping testi PASS ✓
+
+**Muhim: status flapping QAYTMADI** — `visibilitychange`/`onUnmounted` beacon va
+  reconnect watcher avvalgi fix dan saqlanib qoldi. `break` → disconnect → reconnect →
+  `desiredStatus='break'` tiklaydi (flapping xavfi yo'q).
+
+---
+
 ## 2026-06-04 — Mijoz suhbat tarixi (Customer Chat History)
 
 ### Qo'shildi

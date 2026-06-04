@@ -1,6 +1,6 @@
 import { api } from './client';
 
-export type OperatorStatus = 'available' | 'busy' | 'away' | 'offline';
+export type OperatorStatus = 'available' | 'busy' | 'break' | 'away' | 'offline';
 
 export interface TransferTarget {
   id: string;

@@ -202,7 +202,7 @@ export class OperatorService {
     const opState = await this.prisma.operatorState.findUnique({ where: { userId } });
     if (!opState) return;
 
-    if (opState.status === 'available' || opState.status === 'away') {
+    if (opState.status === 'available' || opState.status === 'away' || opState.status === ('break' as any)) {
       const oldStatus = opState.status;
 
       await this.prisma.operatorState.update({
