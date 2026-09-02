@@ -18,4 +18,17 @@ export class HealthController {
     const allOk = Object.values(checks).every((v) => v === 'ok');
     return { status: allOk ? 'ready' : 'degraded', checks };
   }
+
+  @Get('metrics')
+  metrics() {
+    const mem = process.memoryUsage();
+    const cpu = process.cpuUsage();
+    const uptime = process.uptime();
+    return [
+      `process_cpu_user_seconds_total{service="recording-service"} ${(cpu.user / 1e6).toFixed(4)}`,
+      `process_resident_memory_bytes{service="recording-service"} ${mem.rss}`,
+      `process_uptime_seconds{service="recording-service"} ${uptime.toFixed(1)}`,
+      `service_up{service="recording-service"} 1`,
+    ].join('\n') + '\n';
+  }
 }

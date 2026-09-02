@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../common/audit/audit.service';
 import { JwtUser } from '../common/decorators/current-user.decorator';
 import { UpsertTransactionDto, ListTransactionsQuery } from './dto/transactions.dto';
 import { Prisma } from '@prisma/client';
@@ -8,7 +9,10 @@ const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 
 @Injectable()
 export class TransactionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // ── LIST ─────────────────────────────────────────────────────────────────
   async list(user: JwtUser, productId: string, q: ListTransactionsQuery) {
@@ -88,6 +92,14 @@ export class TransactionsService {
       ),
     ]);
 
+    await this.audit.log({
+      actorId: user.sub,
+      action: 'transactions_list',
+      targetType: 'product',
+      targetId: productId,
+      payload: { userUid: q.userUid, search: q.search, count: rows.length },
+    });
+
     return {
       items: rows,
       total: Number(countRows[0].count),
@@ -112,13 +124,22 @@ export class TransactionsService {
       id, productId,
     );
     if (!rows) throw new NotFoundException('Tranzaksiya topilmadi');
+
+    await this.audit.log({
+      actorId: user.sub,
+      action: 'transaction_read',
+      targetType: 'transaction',
+      targetId: id,
+      payload: { productId, externalId: rows.externalId },
+    });
+
     return rows;
   }
 
   // ── UPSERT ────────────────────────────────────────────────────────────────
   async upsert(user: JwtUser, dto: UpsertTransactionDto) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
-    return this.prisma.transaction.upsert({
+    const tx = await this.prisma.transaction.upsert({
       where: { productId_externalId: { productId: dto.productId, externalId: dto.externalId } },
       create: {
         productId: dto.productId,
@@ -131,5 +152,15 @@ export class TransactionsService {
         data: dto.data as Prisma.InputJsonObject,
       },
     });
+
+    await this.audit.log({
+      actorId: user.sub,
+      action: 'transaction_upsert',
+      targetType: 'transaction',
+      targetId: tx.id,
+      payload: { productId: dto.productId, externalId: dto.externalId },
+    });
+
+    return tx;
   }
 }

@@ -153,6 +153,7 @@ CREATE TABLE messages (
 SELECT create_hypertable('messages', 'created_at', chunk_time_interval => INTERVAL '7 days');
 CREATE INDEX idx_messages_room ON messages(room_id, created_at DESC);
 CREATE INDEX idx_messages_sender ON messages(sender_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_attachment_id ON messages(attachment_id) WHERE attachment_id IS NOT NULL;
 
 -- ── Receipts ───────────────────────────────────────────────────────────────────
 CREATE TABLE message_receipts (

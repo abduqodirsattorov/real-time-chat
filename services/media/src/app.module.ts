@@ -14,6 +14,19 @@ class HealthController {
 
   @Get('readyz')
   ready() { return { status: 'ready' }; }
+
+  @Get('metrics')
+  metrics() {
+    const mem = process.memoryUsage();
+    const cpu = process.cpuUsage();
+    const uptime = process.uptime();
+    return [
+      `process_cpu_user_seconds_total{service="media-service"} ${(cpu.user / 1e6).toFixed(4)}`,
+      `process_resident_memory_bytes{service="media-service"} ${mem.rss}`,
+      `process_uptime_seconds{service="media-service"} ${uptime.toFixed(1)}`,
+      `service_up{service="media-service"} 1`,
+    ].join('\n') + '\n';
+  }
 }
 
 @Module({

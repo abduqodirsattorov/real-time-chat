@@ -34,6 +34,7 @@ import { FieldConfigsController } from './field-configs/field-configs.controller
 import { FieldConfigsService } from './field-configs/field-configs.service';
 import { NovaController } from './nova/nova.controller';
 import { NovaService } from './nova/nova.service';
+import { AuditModule } from './common/audit/audit.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { NovaService } from './nova/nova.service';
     CentrifugoModule,
     RabbitMQModule,
     MeilisearchModule,
+    AuditModule,
   ],
   controllers: [
     RoomsController,

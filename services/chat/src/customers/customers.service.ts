@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../common/audit/audit.service';
 import { JwtUser } from '../common/decorators/current-user.decorator';
 import { UpsertCustomerDto, UpdateCustomerDto } from './dto/customers.dto';
 
@@ -7,7 +8,10 @@ const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // ── GET by room ────────────────────────────────────────────────────────────
   async getByRoom(user: JwtUser, roomId: string) {
@@ -37,6 +41,14 @@ export class CustomersService {
       select: { id: true, fullName: true, phone: true, locale: true, createdAt: true },
     });
 
+    await this.audit.log({
+      actorId: user.sub,
+      action: 'customer_read_by_room',
+      targetType: 'customer',
+      targetId: customer.id,
+      payload: { roomId, customerId: room.customerId, productId: room.productId },
+    });
+
     return { ...customer, user: userInfo };
   }
 
@@ -47,6 +59,15 @@ export class CustomersService {
       where: { productId_externalUid: { productId, externalUid: uid } },
     });
     if (!customer) throw new NotFoundException('Mijoz topilmadi');
+
+    await this.audit.log({
+      actorId: user.sub,
+      action: 'customer_read_by_uid',
+      targetType: 'customer',
+      targetId: customer.id,
+      payload: { productId, externalUid: uid },
+    });
+
     return customer;
   }
 
@@ -136,6 +157,14 @@ export class CustomersService {
     const nextCursor = hasMore
       ? Buffer.from(items[items.length - 1].createdAt.toISOString()).toString('base64')
       : null;
+
+    await this.audit.log({
+      actorId: user.sub,
+      action: 'customer_history_read',
+      targetType: 'customer',
+      targetId: customerId,
+      payload: { productId, roomCount: items.length },
+    });
 
     return {
       items: items.map((r) => ({
