@@ -53,11 +53,11 @@ export const callsApi = {
   },
 
   hold(callId: string) {
-    return api.post(`/calls/${callId}/hold`);
+    return api.post(`/calls/${callId}/hold`, { hold: true });
   },
 
   resume(callId: string) {
-    return api.post(`/calls/${callId}/resume`);
+    return api.post(`/calls/${callId}/hold`, { hold: false });
   },
 
   mute(callId: string, muted: boolean) {
@@ -66,33 +66,33 @@ export const callsApi = {
 
   getLivekitToken(callId: string) {
     return api
-      .post<{ token: string; url: string; room: string }>(`/calls/livekit/token`, { callId })
+      .post<{ token: string; url: string; room: string }>(`/calls/${callId}/livekit-token`)
       .then((r) => r.data);
   },
 
   outbound(calleeId: string) {
     return api.post('/calls/outbound', { calleeId }).then((r) => {
-      const d = r.data as { call: Record<string, unknown> } | Record<string, unknown>;
+      const d = r.data as any;
       // Backend returns { call: {...}, status, livekitRoom } — extract inner call
-      const callData = ('call' in d && d.call) ? d.call : d;
-      return { ...callData, id: callData.id ?? callData.callId } as unknown as Call;
+      const callData = (d && typeof d === 'object' && 'call' in d && d.call) ? d.call : d;
+      return { ...callData, id: callData?.id ?? callData?.callId } as unknown as Call;
     });
   },
 
   coldTransfer(callId: string, targetOperatorId: string) {
-    return api.post(`/calls/${callId}/transfer/cold`, { targetOperatorId });
+    return api.post(`/calls/${callId}/transfer`, { type: 'cold', toOperatorId: targetOperatorId });
   },
 
   warmTransferInit(callId: string, targetOperatorId: string) {
-    return api.post(`/calls/${callId}/transfer/warm/init`, { targetOperatorId });
+    return api.post(`/calls/${callId}/transfer`, { type: 'warm', toOperatorId: targetOperatorId });
   },
 
   warmTransferComplete(callId: string) {
-    return api.post(`/calls/${callId}/transfer/warm/complete`);
+    return api.post(`/calls/${callId}/transfer/complete`);
   },
 
   warmTransferCancel(callId: string) {
-    return api.post(`/calls/${callId}/transfer/warm/cancel`);
+    return api.post(`/calls/${callId}/transfer/cancel`);
   },
 
   startRecording(callId: string) {
@@ -102,13 +102,14 @@ export const callsApi = {
   consentAck(callId: string, recordingId: string) {
     return api
       .post<{ recordingId: string; status: string; egressId: string | null }>(
-        `/calls/${callId}/recording/${recordingId}/consent-ack`,
+        `/calls/${callId}/recording/consent-ack`,
+        { recordingId },
       )
       .then((r) => r.data);
   },
 
-  stopRecording(callId: string, recordingId: string) {
-    return api.post(`/calls/${callId}/recording/${recordingId}/stop`);
+  stopRecording(callId: string, _recordingId?: string) {
+    return api.post(`/calls/${callId}/recording/stop`);
   },
 
   getHistory(params?: { limit?: number; offset?: number }) {

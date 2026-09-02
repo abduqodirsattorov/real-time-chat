@@ -34,8 +34,25 @@ export class RoomsService {
 
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
 
-    // Operators see only their current product's rooms
-    const productFilter = isOperator && productId ? { productId } : {};
+    let productFilter: any = {};
+    if (isOperator) {
+      if (user.role === 'admin') {
+        productFilter = productId ? { productId } : {};
+      } else if (productId) {
+        const hasAccess = await this.prisma.operatorProduct.findFirst({
+          where: { userId: user.sub, productId },
+        });
+        if (!hasAccess) throw new ForbiddenException('Ushbu mahsulotga ruxsat yo\'q');
+        productFilter = { productId };
+      } else {
+        const ops = await this.prisma.operatorProduct.findMany({
+          where: { userId: user.sub },
+          select: { productId: true },
+        });
+        const productIds = ops.map(o => o.productId);
+        productFilter = { productId: { in: productIds } };
+      }
+    }
 
     const tagFilter = dto.tagId
       ? { tagIds: { has: dto.tagId } }
@@ -93,6 +110,13 @@ export class RoomsService {
   async searchUser(user: JwtUser, phone: string, productId?: string) {
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
     if (!isOperator) throw new ForbiddenException();
+
+    if (isOperator && user.role !== 'admin' && productId) {
+      const hasAccess = await this.prisma.operatorProduct.findFirst({
+        where: { userId: user.sub, productId },
+      });
+      if (!hasAccess) throw new ForbiddenException('Ushbu mahsulotga ruxsat yo\'q');
+    }
 
     const found = await this.prisma.user.findFirst({
       where: { phone: { contains: phone, mode: 'insensitive' } },
@@ -153,7 +177,17 @@ export class RoomsService {
 
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
     const isMember = room.members.some(m => m.userId === user.sub && !m.leftAt);
+
     if (!isOperator && !isMember) throw new ForbiddenException('Ushbu xonaga ruxsat yo\'q');
+
+    if (isOperator && user.role !== 'admin' && room.productId) {
+      const hasAccess = await this.prisma.operatorProduct.findFirst({
+        where: { userId: user.sub, productId: room.productId },
+      });
+      if (!hasAccess && !isMember) {
+        throw new ForbiddenException('Ushbu mahsulot xonasiga ruxsat yo\'q');
+      }
+    }
 
     return room;
   }

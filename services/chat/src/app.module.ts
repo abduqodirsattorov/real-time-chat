@@ -32,6 +32,8 @@ import { TagsController } from './tags/tags.controller';
 import { TagsService } from './tags/tags.service';
 import { FieldConfigsController } from './field-configs/field-configs.controller';
 import { FieldConfigsService } from './field-configs/field-configs.service';
+import { NovaController } from './nova/nova.controller';
+import { NovaService } from './nova/nova.service';
 
 @Module({
   imports: [
@@ -62,6 +64,7 @@ import { FieldConfigsService } from './field-configs/field-configs.service';
     TransactionsController,
     TagsController,
     FieldConfigsController,
+    NovaController,
   ],
   providers: [
     JwtStrategy,
@@ -74,6 +77,7 @@ import { FieldConfigsService } from './field-configs/field-configs.service';
     TransactionsService,
     TagsService,
     FieldConfigsService,
+    NovaService,
   ],
 })
 export class AppModule implements NestModule {

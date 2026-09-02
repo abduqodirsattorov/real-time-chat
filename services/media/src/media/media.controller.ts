@@ -25,13 +25,13 @@ export class MediaController {
   }
 
   @Get(':id')
-  getAttachment(@Param('id') id: string) {
-    return this.media.getAttachment(id);
+  getAttachment(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.media.getAttachment(user, id);
   }
 
   @Get(':id/thumbnail')
-  getThumbnail(@Param('id') id: string) {
-    return this.media.getThumbnail(id);
+  getThumbnail(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.media.getThumbnail(user, id);
   }
 
   @Post('voice')

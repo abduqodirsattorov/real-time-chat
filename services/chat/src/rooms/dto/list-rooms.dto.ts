@@ -3,11 +3,11 @@ import { Transform } from 'class-transformer';
 
 export class ListRoomsDto {
   @IsOptional()
-  @IsEnum(['active', 'pending', 'closed', 'archived'])
+  @IsEnum(['open', 'pending', 'closed', 'bot_handling'])
   status?: string;
 
   @IsOptional()
-  @IsEnum(['direct', 'support', 'group'])
+  @IsEnum(['direct', 'support', 'transfer_consult'])
   type?: string;
 
   @IsOptional()

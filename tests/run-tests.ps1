@@ -75,6 +75,8 @@ $suiteMap = @{
     "operator"     = "operator.test.ts"
     "multitenancy" = "multitenancy.test.ts"
     "transactions" = "transactions.test.ts"
+    "nova"         = "nova.test.ts"
+    "security"     = "security.test.ts"
 }
 
 if (-not $suiteMap.ContainsKey($Suite)) {

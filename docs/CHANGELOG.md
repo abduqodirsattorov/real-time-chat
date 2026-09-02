@@ -1,5 +1,85 @@
 # CHANGELOG
 
+## 2026-06-04 — Nova API integratsiya poydevori: Mock Nova + Auth client (5-BOSQICH boshlash)
+
+### Qo'shildi
+
+**Mock Nova server (`services/mock-nova/`):**
+- Spec endpointlarini taqlid qiluvchi Express/TypeScript server (port 3009)
+- HMAC-SHA256 imzo tekshirish: GET → bo'sh string, POST → JSON body imzosi
+- `timingSafeEqual` — timing attack'dan himoya
+- Endpointlar:
+  - `GET /health` — auth talab qilmaydi
+  - `GET /api/support/profile/:uid` — namuna profil (2 ta test foydalanuvchi)
+  - `GET /api/support/transactions` — filtr: user_uid, provider, type, sana
+  - `GET /api/support/transaction/:ext_id` — bitta tranzaksiya
+  - `GET /api/support/transaction/:ext_id/actions` — mumkin action'lar (TX holatiga qarab)
+  - `POST /api/support/transaction/:ext_id/action` — action bajarish (soxta)
+  - `POST /test/fail-once/:key` — retry testlash uchun bir martalik 503
+- Namuna ma'lumotlar: 3 ta tranzaksiya (Ok/Wait/Fail holatlari), 2 ta profil
+- docker-compose'ga qo'shildi: `mock-nova` servis
+
+**Nova API Client (`services/chat/src/nova/`):**
+- `NovaService` — chat-service'da yangi provider:
+  - HMAC-SHA256 imzolash: GET → `''`, POST → `JSON.stringify(body)`
+  - Retry: 3 urinish, exponential backoff (500ms, 1s) — faqat 5xx/tarmoq xatosida
+  - 4xx (client error) → qayta urinmasdan exception
+  - Metodlar: `health()`, `getProfile(uid)`, `getTransactions(params)`,
+    `getTransaction(extId)`, `getActions(extId)`, `executeAction(extId, action, opId, params)`
+  - Config env: `NOVA_BASE_URL`, `NOVA_API_KEY`, `NOVA_HMAC_SECRET`
+- `NovaController`:
+  - `GET /nova/health` — public (JWT shart emas), mock-nova health proxy
+  - `GET /nova/test/profile/:uid` — JWT + operator+ role
+  - `GET /nova/test/actions/:extId` — JWT + operator+ role (retry test uchun)
+  - `POST /nova/test/action/:extId` — JWT + supervisor+ role
+- `app.module.ts`: `NovaController` + `NovaService` ro'yxatdan o'tdi
+
+**Infra:**
+- `docker-compose.yml`: `mock-nova` servis, chat-service'ga `NOVA_*` env'lar qo'shildi
+- `.env`: `NOVA_BASE_URL`, `NOVA_API_KEY`, `NOVA_HMAC_SECRET` (lokal uchun mock)
+- `infra/traefik/dynamic.yml`: `/api/v1/nova` → chat-service yo'nalishi
+- `NOVA_BASE_URL=http://mock-nova:3009` (production'da real Nova URL'ga almashtiriladi)
+
+**Testlar (`tests/integration/nova.test.ts`):**
+- **Mock-nova direct testlar (port 3009):**
+  - Health endpoint (auth'siz) ✓
+  - To'g'ri HMAC → 200 ✓
+  - Noto'g'ri HMAC → 401 ✓
+  - API key yo'q → 401 ✓
+  - X-Signature yo'q → 401 ✓
+  - Profile, transactions (filtr), single tx, actions, action execute ✓
+  - Disabled action → 409 ✓
+  - fail-once mexanizmi (birinci → 503, ikkinchi → 200) ✓
+- **Chat-service proxy testlar (port 80):**
+  - `GET /api/v1/nova/health` — JWT'siz ✓
+  - `GET /api/v1/nova/test/profile/uid_test_001` — JWT bilan ✓
+  - Retry: fail-once → chat-service retry → 200 ✓
+  - Action execute admin bilan ✓
+- `tests/integration/package.json`: `test:nova` script qo'shildi
+- `tests/run-tests.ps1`: `nova` suite qo'shildi
+
+**Mavjud testlar regressiyasi: 58/58 PASS (o'zgarmadi)**
+
+**Brauzer test tartibi:**
+1. `docker compose up -d` → mock-nova ham ko'tariladi
+2. `curl http://localhost:3009/health` → `{"status":"ok","service":"mock-nova"}`
+3. `.\tests\run-tests.ps1 -Suite nova` → barcha nova testlar PASS
+4. `.\tests\run-tests.ps1 -Suite regression` → 58 PASS (regressiya yo'q)
+5. Real Nova URL tayyor bo'lganda: `.env`'da `NOVA_BASE_URL` almashtiriladi — kod o'zgarmaydi
+
+**Muhim xavfsizlik:**
+- HMAC `timingSafeEqual` — timing oracle'dan himoya
+- Secrets git'ga kirmaydi (env o'zgaruvchilar)
+- Karta/passport logda masklanmagan (mock ma'lumot, real integratsiyada masklash 5-BOSQICHda)
+- Retry faqat 5xx — 401/403 da qayta urinmaydi (loop'dan himoya)
+
+**Keyingi qadam (5-BOSQICH 2-qism): Pull integratsiya**
+- Nova'dan profil/tranzaksiya real-time olish
+- Webhook: Nova → bizga push (imzo tekshirish + RabbitMQ queue)
+- Action bajarish: rol tekshirish + audit log + idempotency
+
+---
+
 ## 2026-06-04 — Admin Field Config: har product uchun maydon sozlash (4-BOSQICH)
 
 ### Qo'shildi

@@ -155,9 +155,11 @@ export class MediaService implements OnModuleInit {
 
   // ── QISM 2: Get attachment ────────────────────────────────────────────────
 
-  async getAttachment(id: string) {
+  async getAttachment(user: JwtUser, id: string) {
     const att = await this.prisma.attachment.findUnique({ where: { id } });
     if (!att) throw new NotFoundException('Attachment topilmadi');
+
+    await this.verifyAttachmentAccess(user, att);
 
     const url = await this.minio.presignedGetUrl(att.storageKey);
     return { ...att, sizeBytes: att.sizeBytes.toString(), url };
@@ -165,9 +167,11 @@ export class MediaService implements OnModuleInit {
 
   // ── QISM 2: Get thumbnail ────────────────────────────────────────────────
 
-  async getThumbnail(id: string) {
+  async getThumbnail(user: JwtUser, id: string) {
     const att = await this.prisma.attachment.findUnique({ where: { id } });
     if (!att) throw new NotFoundException('Attachment topilmadi');
+
+    await this.verifyAttachmentAccess(user, att);
 
     if (!att.thumbnailKey) {
       // Fall back to original if no thumbnail
@@ -177,6 +181,16 @@ export class MediaService implements OnModuleInit {
 
     const url = await this.minio.presignedGetUrl(att.thumbnailKey);
     return { url, isThumbnail: true };
+  }
+
+  private async verifyAttachmentAccess(user: JwtUser, att: any) {
+    const isStaff = ['operator', 'supervisor', 'admin'].includes(user.role);
+    if (isStaff) return;
+
+    if (att.uploaderId === user.sub) return;
+
+    this.logger.warn({ event: 'unauthorized_attachment_access', userId: user.sub, attachmentId: att.id });
+    throw new ForbiddenException('Ushbu faylga kirish huquqingiz yo\'q');
   }
 
   // ── QISM 5: Voice upload ──────────────────────────────────────────────────

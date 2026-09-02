@@ -7,6 +7,6 @@ export class UpdateRoomDto {
   title?: string;
 
   @IsOptional()
-  @IsEnum(['active', 'pending', 'closed', 'archived'])
+  @IsEnum(['open', 'pending', 'closed', 'bot_handling'])
   status?: string;
 }

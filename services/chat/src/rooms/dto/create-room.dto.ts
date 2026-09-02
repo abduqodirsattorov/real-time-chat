@@ -1,8 +1,8 @@
 import { IsEnum, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 
 export class CreateRoomDto {
-  @IsEnum(['direct', 'support', 'group'])
-  type: 'direct' | 'support' | 'group';
+  @IsEnum(['direct', 'support', 'transfer_consult'])
+  type: 'direct' | 'support' | 'transfer_consult';
 
   @IsOptional()
   @IsString()

@@ -31,8 +31,8 @@ export class CallsController {
 
   // QISM 10 — Global queue (operator bo'lmagan inbound kutuvchi calllar)
   @Get('queue')
-  getQueue() {
-    return this.calls.getCallQueue();
+  getQueue(@CurrentUser() user: JwtUser) {
+    return this.calls.getCallQueue(user);
   }
 
   @Get()
@@ -46,8 +46,20 @@ export class CallsController {
   }
 
   @Get(':id')
-  getCall(@Param('id') id: string) {
-    return this.calls.getCall(id);
+  getCall(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.calls.getCall(user, id);
+  }
+
+  @Post(':id/livekit-token')
+  @HttpCode(HttpStatus.OK)
+  getLivekitToken(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.calls.getLivekitToken(user, id);
+  }
+
+  @Post('livekit/token')
+  @HttpCode(HttpStatus.OK)
+  getLivekitTokenLegacy(@CurrentUser() user: JwtUser, @Body() body: { callId: string }) {
+    return this.calls.getLivekitToken(user, body.callId);
   }
 
   // QISM 4

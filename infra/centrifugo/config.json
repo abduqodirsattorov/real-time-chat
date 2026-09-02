@@ -13,20 +13,20 @@
       "history_size": 100,
       "history_ttl": "168h",
       "force_recovery": true,
-      "allow_subscribe_for_client": true,
+      "allow_subscribe_for_client": false,
       "allow_publish_for_client": false
     },
     {
       "name": "presence",
       "presence": true,
-      "allow_subscribe_for_client": true,
+      "allow_subscribe_for_client": false,
       "allow_publish_for_client": false
     },
     {
       "name": "call",
       "history_size": 10,
       "history_ttl": "1h",
-      "allow_subscribe_for_client": true,
+      "allow_subscribe_for_client": false,
       "allow_publish_for_client": false
     }
   ],
@@ -46,6 +46,6 @@
   "client_connection_rate_limit": 100,
   "presence_ttl": "60s",
   "proxy_connect_endpoint": "http://presence-service:3003/webhooks/centrifugo/connect",
-  "proxy_subscribe_endpoint": "",
+  "proxy_subscribe_endpoint": "http://chat-service:3002/webhooks/centrifugo/subscribe",
   "proxy_publish_endpoint": ""
 }

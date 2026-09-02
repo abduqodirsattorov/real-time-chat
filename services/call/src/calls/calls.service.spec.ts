@@ -347,7 +347,7 @@ describe('CallsService', () => {
 
   it('T24: getCall throws NotFound for unknown id', async () => {
     mockPrisma.call.findUnique.mockResolvedValue(null);
-    await expect(service.getCall('nonexistent')).rejects.toThrow(NotFoundException);
+    await expect(service.getCall(customerUser, 'nonexistent')).rejects.toThrow(NotFoundException);
   });
 
   it('T25: getCalls returns paginated result for customer', async () => {

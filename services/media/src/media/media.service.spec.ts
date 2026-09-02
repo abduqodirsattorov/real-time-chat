@@ -187,16 +187,16 @@ describe('MediaService', () => {
   // ── 4. getAttachment ───────────────────────────────────────────────────────
   it('13. getAttachment throws NotFoundException for unknown id', async () => {
     mockPrisma.attachment.findUnique.mockResolvedValue(null);
-    await expect(service.getAttachment('bad-id')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getAttachment(user as any, 'bad-id')).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('14. getAttachment returns attachment with presigned url', async () => {
     mockPrisma.attachment.findUnique.mockResolvedValue({
-      id: 'att-2', storageKey: '2024/01/01/x.jpg', sizeBytes: BigInt(1024),
+      id: 'att-2', storageKey: '2024/01/01/x.jpg', sizeBytes: BigInt(1024), uploaderId: user.sub,
     });
     mockMinio.presignedGetUrl.mockResolvedValue('http://minio/get-url');
 
-    const result = await service.getAttachment('att-2');
+    const result = await service.getAttachment(user as any, 'att-2');
     expect(result.url).toBe('http://minio/get-url');
     expect(result.sizeBytes).toBe('1024');
   });
@@ -204,11 +204,11 @@ describe('MediaService', () => {
   // ── 5. getThumbnail ────────────────────────────────────────────────────────
   it('15. getThumbnail falls back to original if no thumbnailKey', async () => {
     mockPrisma.attachment.findUnique.mockResolvedValue({
-      id: 'att-3', storageKey: '2024/01/01/x.mp4', thumbnailKey: null, sizeBytes: BigInt(0),
+      id: 'att-3', storageKey: '2024/01/01/x.mp4', thumbnailKey: null, sizeBytes: BigInt(0), uploaderId: user.sub,
     });
     mockMinio.presignedGetUrl.mockResolvedValue('http://minio/original');
 
-    const result = await service.getThumbnail('att-3');
+    const result = await service.getThumbnail(user as any, 'att-3');
     expect(result.isThumbnail).toBe(false);
     expect(result.url).toBe('http://minio/original');
   });

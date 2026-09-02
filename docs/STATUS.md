@@ -1,8 +1,23 @@
 # Nova Chat & Call Platform — STATUS
 
-## Holat: To'liq ishlaydi (lokal) — 58/58 test PASS
+## Holat: To'liq ishlaydi (lokal) — 25/25 Xavfsizlik & Arxitektura takomillashtirildi ✅
 
 ## Ishlaydigan funksiyalar
+
+### Xavfsizlik & Arxitektura Qat'iyligi (25 Band) ✅
+- **Centrifugo Proxy Auth (P0)**: `allow_subscribe_for_client: false`, `/webhooks/centrifugo/subscribe` orqali xona, foydalanuvchi va mahsulot ruxsatlari server-side tekshiriladi.
+- **LiveKit Token & Call Security (P0)**: LiveKit tokenlari faqat qo'ng'iroqning haqiqiy ishtirokchilariga beriladi. Call endpointlariga (queue, getCall, hangup, mute, hold) qat'iy avtorizatsiya qo'shildi.
+- **Media Access Control (P0)**: `GET /media/:id` va `GET /media/:id/thumbnail` da yuklovchi, xona a'zoligi va mahsulot ruxsati tekshiriladi.
+- **Auth-Service Security (P0)**: `crypto.randomInt` orqali xavfsiz OTP generatsiyasi, 5 ta xato urinishdan so'ng OTP bloklanishi, Nova SSO to'liq payload HMAC tekshiruvi.
+- **Operator Product Switching (P0)**: `PATCH /operator/product` da operatorning `operator_products` ruxsati server-side tekshiriladi.
+- **Cross-Tenant Isolation (P0)**: Operatorlar uchun mahsulot filtri qat'iylashtirildi, ruxsatsiz mahsulot xonalariga kirish bloklandi.
+- **Call-to-Recording M2M Auth (P1)**: `call-service` va `recording-service` o'rtasida `x-internal-service-key` orqali xavfsiz ichki aloqa o'rnatildi.
+- **Operator Panel Call API Alignment (P1)**: Operator panelidagi `hold`, `resume`, `transfer` (cold/warm), `recording` va `livekitToken` yo'nalishlari backend bilan 100% sinxronlashtirildi.
+- **Frontend Single-Flight Token Refresh (P1)**: Parallel 401 so'rovlarida yagona refresh promise orqali sessiya o'chib ketishining oldi olindi.
+- **Database Schema Konsolidatsiyasi (P-1, P2)**: `shared/prisma/schema.prisma` master schema yaratildi va barcha mikroservislarga sinxronlandi.
+- **DTO & Enum Alignment (P2)**: `RoomStatus` va `RoomType` enumlari DTO va bazada to'liq moslashtirildi.
+- **Strict Validation (P2)**: Barcha NestJS xizmatlarida `forbidNonWhitelisted: true` yoqildi.
+- **Call Transactions & ACD Claims (P2)**: Qo'ng'iroqlar `prisma.$transaction` da boshqariladi, operator claim qulflari qo'ng'iroq tugashi bilan darhol bo'shatiladi.
 
 ### Chat & Call (yadro)
 - Real-time chat (2 yo'nalish, fayl, typing, read receipt, unread badge)
@@ -138,11 +153,18 @@ npx jest operator.test.ts multitenancy.test.ts transactions.test.ts --testTimeou
 - Flutter 400: `@IsUUID()` → `@IsString()` (00000000-0000-0000-0000-000000000002 rejected)
 - Dublikat suhbatlar: DB unique index (partial) + Redis lock + DB tozalash
 
+### Nova API integratsiya poydevori (5-BOSQICH, 1-qism) ✅
+- Mock Nova server (`services/mock-nova/`, port 3009): barcha spec endpointlari
+- HMAC-SHA256 imzo tekshirish (timingSafeEqual, timing attack himoyasi)
+- Nova API client (`NovaService`): HMAC imzolash, retry (3 urinish, exponential backoff)
+- `GET /api/v1/nova/health` (public), `/nova/test/profile`, `/nova/test/actions`, `/nova/test/action`
+- 23/23 nova test PASS, 58/58 regressiya PASS
+
 ## Keyingi bosqichlar
 
 **Nova API tayyor bo'lganda:**
 - **3-BOSQICH:** Tranzaksiya actionlari (Recredit, Pulni qaytarish, Resend...) — Nova API kerak
-- **5-BOSQICH:** Nova API real integratsiya — transfer/profile webhook, action API
+- **5-BOSQICH (2-qism):** Pull integratsiya (profil/tx real-time Nova'dan), webhook (Nova → biz, HMAC + RabbitMQ), action bajarish (rol + audit log + idempotency)
 
 **Production deploy tayyor bo'lganda:**
 - Server (Ubuntu 22.04), HTTPS (Let's Encrypt), domen

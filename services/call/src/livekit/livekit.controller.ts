@@ -23,7 +23,7 @@ export class LiveKitController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async getToken(@CurrentUser() user: JwtUser, @Body() dto: TokenDto) {
-    const call = await this.calls.getCall(dto.callId);
+    const call = await this.calls.getCall(user, dto.callId);
     const token = await this.livekit.generateToken(user.sub, call.livekitRoom!);
     return { token, url: this.livekit.wsUrl, room: call.livekitRoom };
   }

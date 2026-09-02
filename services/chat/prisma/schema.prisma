@@ -71,21 +71,70 @@ enum OperatorStatus {
   @@map("operator_status")
 }
 
+enum CallDirection {
+  inbound
+  outbound
+  internal
+  @@map("call_direction")
+}
+
+enum CallStatus {
+  initiating
+  ringing
+  queued
+  connected
+  on_hold
+  transferring
+  completed
+  failed
+  no_answer
+  canceled
+  @@map("call_status")
+}
+
+enum TransferType {
+  cold
+  warm
+  @@map("transfer_type")
+}
+
+enum TransferStatus {
+  initiated
+  consulting
+  completed
+  failed
+  canceled
+  @@map("transfer_status")
+}
+
+enum RecordingStatus {
+  starting
+  active
+  processing
+  completed
+  failed
+  @@map("recording_status")
+}
+
 // ── User ──────────────────────────────────────────────────────────────────────
 
 model User {
-  id         String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  externalId String?    @unique @map("external_id") @db.VarChar(64)
-  phone      String?    @unique @db.VarChar(32)
-  email      String?    @unique @db.VarChar(255)
-  fullName   String?    @map("full_name") @db.VarChar(255)
-  avatarUrl  String?    @map("avatar_url")
-  role       UserRole   @default(customer)
-  status     UserStatus @default(active)
-  locale     UserLocale @default(uz)
-  metadata   Json       @default("{}")
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  id           String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  externalId   String?    @unique @map("external_id") @db.VarChar(64)
+  phone        String?    @unique @db.VarChar(32)
+  email        String?    @unique @db.VarChar(255)
+  passwordHash String?    @map("password_hash") @db.VarChar(255)
+  fullName     String?    @map("full_name") @db.VarChar(255)
+  avatarUrl    String?    @map("avatar_url")
+  role         UserRole   @default(customer)
+  status       UserStatus @default(active)
+  locale       UserLocale @default(uz)
+  metadata     Json       @default("{}")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  operatorState    OperatorState?
+  operatorProducts OperatorProduct[]
 
   @@map("users")
 }
@@ -157,11 +206,11 @@ model Room {
 // ── RoomMember ─────────────────────────────────────────────────────────────────
 
 model RoomMember {
-  roomId  String    @map("room_id") @db.Uuid
-  userId  String    @map("user_id") @db.Uuid
-  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz()
-  leftAt  DateTime? @map("left_at") @db.Timestamptz()
-  muted   Boolean   @default(false)
+  roomId   String    @map("room_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz()
+  leftAt   DateTime? @map("left_at") @db.Timestamptz()
+  muted    Boolean   @default(false)
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
@@ -170,10 +219,10 @@ model RoomMember {
   @@map("room_members")
 }
 
-// ── Message — TimescaleDB hypertable (composite PK: id + created_at) ──────────
+// ── Message — TimescaleDB hypertable ──────────────────────────────────────────
 
 model Message {
-  id        String      @db.Uuid
+  id        String      @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   roomId    String      @map("room_id") @db.Uuid
   senderId  String      @map("sender_id") @db.Uuid
   type      MessageType @default(text)
@@ -280,6 +329,8 @@ model OperatorProduct {
   productId String   @map("product_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@id([userId, productId])
   @@index([userId])
   @@map("operator_products")
@@ -300,8 +351,42 @@ model OperatorState {
   languages          UserLocale[]   @default([uz])
   isSupervisor       Boolean        @default(false) @map("is_supervisor")
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([status])
   @@map("operator_states")
+}
+
+// ── AuditLog ──────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String   @db.VarChar(64)
+  targetType String?  @map("target_type") @db.VarChar(64)
+  targetId   String?  @map("target_id") @db.Uuid
+  payload    Json     @default("{}")
+  ipAddress  String?  @map("ip_address") @db.VarChar(64)
+  userAgent  String?  @map("user_agent") @db.VarChar(512)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("audit_logs")
+}
+
+// ── BotConfig ─────────────────────────────────────────────────────────────────
+
+model BotConfig {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name            String   @db.VarChar(128)
+  type            String   @default("faq") @db.VarChar(32)
+  enabled         Boolean  @default(false)
+  config          Json     @default("{}")
+  fallbackToHuman Boolean  @default(true) @map("fallback_to_human")
+  handoffKeywords String[] @default([]) @map("handoff_keywords")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("bot_configs")
 }
 
 // ── FieldConfig ────────────────────────────────────────────────────────────────
@@ -323,4 +408,83 @@ model FieldConfig {
   @@unique([productId, context, fieldKey])
   @@index([productId, context])
   @@map("field_configs")
+}
+
+// ── Call Models ───────────────────────────────────────────────────────────────
+
+model Call {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  productId       String?       @map("product_id") @db.Uuid
+  callerId        String?       @map("caller_id") @db.Uuid
+  calleeId        String?       @map("callee_id") @db.Uuid
+  operatorId      String?       @map("operator_id") @db.Uuid
+  direction       CallDirection
+  status          CallStatus    @default(initiating)
+  livekitRoom     String?       @map("livekit_room")
+  queueWaitMs     Int?          @map("queue_wait_ms")
+  ringDurationMs  Int?          @map("ring_duration_ms")
+  talkDurationMs  Int?          @map("talk_duration_ms")
+  hangupCause     String?       @map("hangup_cause")
+  hangupBy        String?       @map("hangup_by") @db.Uuid
+  recordingId     String?       @map("recording_id") @db.Uuid
+  metadata        Json          @default("{}")
+  initiatedAt     DateTime      @default(now()) @map("initiated_at")
+  answeredAt      DateTime?     @map("answered_at")
+  endedAt         DateTime?     @map("ended_at")
+
+  transfers  CallTransfer[]
+  queue      CallQueue[]
+  recordings Recording[]
+
+  @@map("calls")
+}
+
+model CallTransfer {
+  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  callId       String         @map("call_id") @db.Uuid
+  fromOperator String         @map("from_operator") @db.Uuid
+  toOperator   String         @map("to_operator") @db.Uuid
+  type         TransferType
+  status       TransferStatus @default(initiated)
+  consultRoom  String?        @map("consult_room")
+  initiatedAt  DateTime       @default(now()) @map("initiated_at")
+  completedAt  DateTime?      @map("completed_at")
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@map("call_transfers")
+}
+
+model CallQueue {
+  id               String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  callId           String      @map("call_id") @db.Uuid
+  priority         Int         @default(0) @db.SmallInt
+  requiredSkills   String[]    @default([]) @map("required_skills")
+  requiredLanguage UserLocale? @map("required_language")
+  enqueuedAt       DateTime    @default(now()) @map("enqueued_at")
+  assignedAt       DateTime?   @map("assigned_at")
+  assignedTo       String?     @map("assigned_to") @db.Uuid
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@map("call_queue")
+}
+
+model Recording {
+  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  callId           String          @map("call_id") @db.Uuid
+  startedBy        String          @map("started_by") @db.Uuid
+  consentAnnounced Boolean         @default(false) @map("consent_announced")
+  status           RecordingStatus @default(starting)
+  storageKey       String?         @map("storage_key")
+  durationMs       Int?            @map("duration_ms")
+  sizeBytes        BigInt?         @map("size_bytes")
+  egressId         String?         @map("egress_id")
+  startedAt        DateTime        @default(now()) @map("started_at")
+  stoppedAt        DateTime?       @map("stopped_at")
+  failedReason     String?         @map("failed_reason")
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@map("recordings")
 }

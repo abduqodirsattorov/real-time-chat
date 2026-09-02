@@ -1,6 +1,11 @@
 import { Global, Module } from '@nestjs/common';
 import { CentrifugoService } from './centrifugo.service';
+import { CentrifugoWebhookController } from './centrifugo.controller';
 
 @Global()
-@Module({ providers: [CentrifugoService], exports: [CentrifugoService] })
+@Module({
+  controllers: [CentrifugoWebhookController],
+  providers: [CentrifugoService],
+  exports: [CentrifugoService],
+})
 export class CentrifugoModule {}

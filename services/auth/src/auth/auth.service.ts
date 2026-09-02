@@ -8,7 +8,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { createHmac } from 'crypto';
+import { createHmac, randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,10 +23,12 @@ const OTP_TTL = 300;           // 5 min
 const REFRESH_TTL = 2592000;   // 30 days
 const ACCESS_TTL = '1h';
 const OTP_RATE_DAY = 5;
+const OTP_MAX_ATTEMPTS = 5;
 const NOVA_TS_TOLERANCE = 300; // 5 min replay window
 
 const K = {
   otp: (phone: string) => `auth:otp:${phone}`,
+  otpAttempts: (phone: string) => `auth:otp:attempts:${phone}`,
   otpMin: (phone: string) => `auth:otp:min:${phone}`,
   otpDay: (phone: string, d: string) => `auth:otp:day:${phone}:${d}`,
   refresh: (jti: string) => `auth:refresh:${jti}`,
@@ -70,6 +72,7 @@ export class AuthService {
 
     const otp = this.generateOtp();
     await this.redis.set(K.otp(phone), otp, OTP_TTL);
+    await this.redis.del(K.otpAttempts(phone));
 
     // SMS provider yo'q — lokal console.log fallback
     this.logger.warn({ event: 'otp_sent', phone });
@@ -81,11 +84,22 @@ export class AuthService {
   // ── OTP Verify ───────────────────────────────────────────────────────────────
 
   async otpVerify(dto: OtpVerifyDto) {
+    const attemptKey = K.otpAttempts(dto.phone);
+    const attempts = await this.redis.incr(attemptKey);
+    if (attempts === 1) await this.redis.expire(attemptKey, OTP_TTL);
+
+    if (attempts > OTP_MAX_ATTEMPTS) {
+      await this.redis.del(K.otp(dto.phone));
+      throw new ForbiddenException('Ko\'p noto\'g\'ri urinishlar qilindi. Yangi OTP so\'rang.');
+    }
+
     const stored = await this.redis.get(K.otp(dto.phone));
     if (!stored || stored !== dto.otp) {
       throw new UnauthorizedException('OTP noto\'g\'ri yoki muddati tugagan');
     }
+
     await this.redis.del(K.otp(dto.phone));
+    await this.redis.del(attemptKey);
 
     const user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
     if (!user) throw new NotFoundException('Foydalanuvchi topilmadi. Avval /auth/register ga murojaat qiling.');
@@ -226,18 +240,27 @@ export class AuthService {
   // ── Nova SSO ─────────────────────────────────────────────────────────────────
 
   async novaSso(dto: NovaSsoDto) {
+    const ssoSecret = process.env.NOVA_SSO_SECRET;
+    if (!ssoSecret) {
+      throw new BadRequestException('NOVA_SSO_SECRET konfiguratsiya qilinmagan');
+    }
+
     // 1. Timestamp tekshirish (replay attack)
     const nowSec = Math.floor(Date.now() / 1000);
     if (Math.abs(nowSec - dto.timestamp) > NOVA_TS_TOLERANCE) {
       throw new UnauthorizedException('Timestamp muddati o\'tgan yoki kelgusidagi vaqt');
     }
 
-    // 2. HMAC signature tekshirish
-    const expected = createHmac('sha256', process.env.NOVA_SSO_SECRET ?? '')
+    // 2. HMAC signature tekshirish (to'liq payload yoki legacy)
+    const expected = createHmac('sha256', ssoSecret)
+      .update(`${dto.novaUserId}:${dto.timestamp}:${dto.novaRole}:${dto.locale ?? 'uz'}`)
+      .digest('hex');
+
+    const legacyExpected = createHmac('sha256', ssoSecret)
       .update(`${dto.novaUserId}:${dto.timestamp}`)
       .digest('hex');
 
-    if (!timingSafeEqual(expected, dto.signature)) {
+    if (!timingSafeEqual(expected, dto.signature) && !timingSafeEqual(legacyExpected, dto.signature)) {
       this.logger.warn({ event: 'nova_sso_invalid_signature', novaUserId: dto.novaUserId });
       throw new UnauthorizedException('Imzo yaroqsiz');
     }
@@ -295,7 +318,7 @@ export class AuthService {
   }
 
   private generateOtp(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return randomInt(100000, 1000000).toString();
   }
 
   private async enforceOtpRateLimit(phone: string) {

@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { RecordingsService } from './recordings.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { InternalOrJwtAuthGuard } from '../common/guards/internal-auth.guard';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { StartRecordingDto, StopRecordingDto } from './recordings.dto';
 
@@ -13,14 +14,14 @@ export class RecordingsController {
 
   // Internal endpoint — call-service calls this after consent-ack
   @Post('start')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(InternalOrJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   start(@Body() dto: StartRecordingDto) {
     return this.svc.start(dto);
   }
 
   @Post('stop')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(InternalOrJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   stop(@Body() dto: StopRecordingDto) {
     return this.svc.stop(dto);

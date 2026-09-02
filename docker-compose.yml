@@ -235,6 +235,9 @@ services:
       MEILI_URL: http://meilisearch:7700
       MEILI_KEY: ${MEILI_MASTER_KEY}
       JWT_SECRET: ${JWT_SECRET}
+      NOVA_BASE_URL: ${NOVA_BASE_URL:-http://mock-nova:3009}
+      NOVA_API_KEY: ${NOVA_API_KEY:-nova_api_key_change_me}
+      NOVA_HMAC_SECRET: ${NOVA_HMAC_SECRET:-nova_hmac_secret_change_me_32c}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3002
     ports:
@@ -477,6 +480,27 @@ services:
       interval: 10s
       timeout: 5s
       start_period: 60s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── Mock Nova (Nova API simulator — integratsiya uchun) ─────────────────────
+
+  mock-nova:
+    build:
+      context: ./services/mock-nova
+      dockerfile: Dockerfile
+    environment:
+      MOCK_NOVA_API_KEY: ${NOVA_API_KEY:-nova_api_key_change_me}
+      MOCK_NOVA_HMAC_SECRET: ${NOVA_HMAC_SECRET:-nova_hmac_secret_change_me_32c}
+      PORT: 3009
+    ports:
+      - "3009:3009"
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3009/health"]
+      interval: 10s
+      timeout: 5s
       retries: 5
     restart: unless-stopped
 

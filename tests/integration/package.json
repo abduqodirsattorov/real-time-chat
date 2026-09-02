@@ -9,6 +9,8 @@
     "test:operator": "jest operator.test.ts --testTimeout=30000 --forceExit",
     "test:multitenancy": "jest multitenancy.test.ts --testTimeout=30000 --forceExit",
     "test:transactions": "jest transactions.test.ts --testTimeout=30000 --forceExit",
+    "test:nova": "jest nova.test.ts --testTimeout=30000 --forceExit --verbose",
+    "test:security": "jest security.test.ts --testTimeout=30000 --forceExit --verbose",
     "test:regression": "jest --testPathPattern='operator|multitenancy|transactions' --testTimeout=30000 --forceExit --verbose"
   },
   "devDependencies": {

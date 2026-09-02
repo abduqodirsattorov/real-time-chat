@@ -52,14 +52,16 @@ export class CallsService {
     const operator = await this.findAvailableOperator(user.locale, dto.requiredSkills ?? [], productId);
 
     if (!operator) {
-      await this.prisma.call.update({ where: { id: call.id }, data: { status: 'queued' } });
-      await this.prisma.callQueue.create({
-        data: {
-          callId: call.id,
-          requiredSkills: dto.requiredSkills ?? [],
-          requiredLanguage: (user.locale as any) ?? null,
-        },
-      });
+      await this.prisma.$transaction([
+        this.prisma.call.update({ where: { id: call.id }, data: { status: 'queued' } }),
+        this.prisma.callQueue.create({
+          data: {
+            callId: call.id,
+            requiredSkills: dto.requiredSkills ?? [],
+            requiredLanguage: (user.locale as any) ?? null,
+          },
+        }),
+      ]);
 
       const holdMusicUrl = process.env.HOLD_MUSIC_URL ?? '';
       if (holdMusicUrl) await this.centrifugo.playAudioToCall(call.id, holdMusicUrl, 'caller');
@@ -86,14 +88,16 @@ export class CallsService {
       return { call: { ...call, status: 'queued' }, status: 'queued', livekitRoom: roomName, livekitUrl: this.livekit.wsUrl, callerToken };
     }
 
-    await this.prisma.call.update({
-      where: { id: call.id },
-      data: { calleeId: operator.userId, status: 'ringing', initiatedAt: new Date() },
-    });
-    await this.prisma.operatorState.updateMany({
-      where: { userId: operator.userId },
-      data: { onCall: true },
-    });
+    await this.prisma.$transaction([
+      this.prisma.call.update({
+        where: { id: call.id },
+        data: { calleeId: operator.userId, status: 'ringing', initiatedAt: new Date() },
+      }),
+      this.prisma.operatorState.updateMany({
+        where: { userId: operator.userId },
+        data: { onCall: true },
+      }),
+    ]);
 
     const callerToken = await this.livekit.generateToken(user.sub, roomName);
 
@@ -129,6 +133,9 @@ export class CallsService {
       where: { id: callId },
       data: { status: 'connected', answeredAt: new Date() },
     });
+
+    // Release claim lock since call is now connected
+    await this.redis.del(`operator:claim:${user.sub}`);
 
     const callerToken = await this.livekit.generateToken(call.callerId!, call.livekitRoom!);
     const operatorToken = await this.livekit.generateToken(user.sub, call.livekitRoom!);
@@ -182,13 +189,16 @@ export class CallsService {
 
     await this.livekit.destroyRoom(call.livekitRoom!);
 
-    // Release onCall lock for both caller and callee
+    // Release onCall lock and claims for both caller and callee
     const releaseIds = [call.callerId, call.calleeId].filter(Boolean) as string[];
     if (releaseIds.length > 0) {
       await this.prisma.operatorState.updateMany({
         where: { userId: { in: releaseIds } },
         data: { onCall: false },
       });
+      for (const rid of releaseIds) {
+        await this.redis.del(`operator:claim:${rid}`);
+      }
     }
 
     await this.centrifugo.publish(`call:${callId}`, {
@@ -409,15 +419,22 @@ export class CallsService {
       await this.centrifugo.playAudioToCall(callId, announcementUrl, 'all');
     }
 
+    await this.redis.set(`recording:consent:${recording.id}`, '1', 10);
+
     // 10 second timeout — if no consent-ack, mark failed
     setTimeout(async () => {
-      const rec = await this.prisma.recording.findUnique({ where: { id: recording.id } });
-      if (rec && !rec.consentAnnounced && rec.status === 'starting') {
-        await this.prisma.recording.update({
-          where: { id: recording.id },
-          data: { status: 'failed', failedReason: 'consent_timeout' },
-        });
-        this.logger.warn({ event: 'recording_consent_timeout', recordingId: recording.id, callId });
+      try {
+        const rec = await this.prisma.recording.findUnique({ where: { id: recording.id } });
+        if (rec && !rec.consentAnnounced && rec.status === 'starting') {
+          await this.prisma.recording.update({
+            where: { id: recording.id },
+            data: { status: 'failed', failedReason: 'consent_timeout' },
+          });
+          await this.redis.del(`recording:consent:${recording.id}`);
+          this.logger.warn({ event: 'recording_consent_timeout', recordingId: recording.id, callId });
+        }
+      } catch (err) {
+        this.logger.error({ event: 'recording_timeout_error', recordingId: recording.id, err: String(err) });
       }
     }, 10_000);
 
@@ -439,12 +456,16 @@ export class CallsService {
 
     // Delegate Egress to recording-service
     const recordingServiceUrl = process.env.RECORDING_SERVICE_URL ?? 'http://recording-service:3007';
+    const internalKey = process.env.INTERNAL_SERVICE_KEY ?? 'internal_service_default_secret_key';
     let egressId: string | null = null;
     let finalStatus = 'starting';
     try {
       const res = await fetch(`${recordingServiceUrl}/recordings/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-service-key': internalKey,
+        },
         body: JSON.stringify({ recordingId, callId, livekitRoom: call.livekitRoom }),
       });
       if (res.ok) {
@@ -489,7 +510,11 @@ export class CallsService {
 
   // ── QISM 10: GET /calls, GET /calls/:id, GET /calls/queue ────────────────────
 
-  async getCallQueue() {
+  async getCallQueue(user: JwtUser) {
+    if (!OPERATOR_ROLES.has(user.role)) {
+      throw new ForbiddenException('Faqat operatorlar navbatni ko\'ra oladi');
+    }
+
     const calls = await this.prisma.call.findMany({
       where: { direction: 'inbound', status: 'queued' },
       orderBy: { initiatedAt: 'asc' },
@@ -520,13 +545,38 @@ export class CallsService {
     };
   }
 
-  async getCall(callId: string) {
+  async getCall(user: JwtUser, callId: string) {
     const call = await this.prisma.call.findUnique({
       where: { id: callId },
       include: { transfers: true, recordings: true },
     });
     if (!call) throw new NotFoundException('Qo\'ng\'iroq topilmadi');
+
+    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub;
+    const isStaff = OPERATOR_ROLES.has(user.role);
+    if (!isParticipant && !isStaff) {
+      throw new ForbiddenException('Bu qo\'ng\'iroqqa ruxsatingiz yo\'q');
+    }
+
     return call;
+  }
+
+  async getLivekitToken(user: JwtUser, callId: string) {
+    const call = await this.prisma.call.findUnique({
+      where: { id: callId },
+    });
+    if (!call || !call.livekitRoom) throw new NotFoundException('Qo\'ng\'iroq topilmadi');
+
+    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub;
+    const isStaff = OPERATOR_ROLES.has(user.role);
+
+    if (!isParticipant && !isStaff) {
+      this.logger.warn({ event: 'unauthorized_livekit_token_attempt', userId: user.sub, callId });
+      throw new ForbiddenException('Bu qo\'ng\'iroq uchun LiveKit token olishga ruxsat yo\'q');
+    }
+
+    const token = await this.livekit.generateToken(user.sub, call.livekitRoom);
+    return { token, url: this.livekit.wsUrl, room: call.livekitRoom };
   }
 
   async getCalls(user: JwtUser, limit = 20, offset = 0, productId?: string) {
