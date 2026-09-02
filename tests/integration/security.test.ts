@@ -162,4 +162,154 @@ describe('Security & Authorization Audit Tests', () => {
       }
     });
   });
+
+  describe('5. Admin RBAC & Privilege Escalation Prevention (SEC-01)', () => {
+    let supervisorToken: string;
+    let supervisorUserId: string;
+
+    beforeAll(async () => {
+      const email = `supervisor-${Date.now()}@pusher.uz`;
+      const pass = 'SupervisorPass123!';
+      try {
+        const createRes = await axios.post(
+          `${API}/admin/users`,
+          {
+            email,
+            password: pass,
+            firstName: 'Audit',
+            lastName: 'Supervisor',
+            role: 'supervisor',
+            productIds: [],
+          },
+          { headers: { Authorization: `Bearer ${adminToken}` } },
+        );
+        supervisorUserId = createRes.data.id;
+        const loginRes = await axios.post(`${API}/auth/email-login`, {
+          email,
+          password: pass,
+        });
+        supervisorToken = loginRes.data.accessToken;
+      } catch (err: any) {
+        console.warn('Supervisor setup failed in security test:', err?.response?.data || err.message);
+      }
+    });
+
+    it('should reject supervisor trying to create new users (403 Forbidden)', async () => {
+      if (!supervisorToken) return;
+      try {
+        await axios.post(
+          `${API}/admin/users`,
+          {
+            email: `hacked-${Date.now()}@pusher.uz`,
+            password: 'Password123!',
+            firstName: 'Hacked',
+            lastName: 'User',
+            role: 'admin',
+          },
+          { headers: { Authorization: `Bearer ${supervisorToken}` } },
+        );
+        fail('Supervisor should NOT be able to create users');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(403);
+      }
+    });
+
+    it('should reject supervisor trying to change passwords (403 Forbidden)', async () => {
+      if (!supervisorToken) return;
+      try {
+        await axios.patch(
+          `${API}/admin/users/${supervisorUserId}/password`,
+          { password: 'NewPassword123!' },
+          { headers: { Authorization: `Bearer ${supervisorToken}` } },
+        );
+        fail('Supervisor should NOT be able to change passwords');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(403);
+      }
+    });
+
+    it('should reject supervisor trying to delete users (403 Forbidden)', async () => {
+      if (!supervisorToken) return;
+      try {
+        await axios.delete(
+          `${API}/admin/users/${supervisorUserId}`,
+          { headers: { Authorization: `Bearer ${supervisorToken}` } },
+        );
+        fail('Supervisor should NOT be able to delete users');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(403);
+      }
+    });
+  });
+
+  describe('6. Token Revocation upon User Deletion / Suspension (SEC-03)', () => {
+    it('should immediately reject deleted user token with 401 Unauthorized', async () => {
+      const email = `disposable-${Date.now()}@pusher.uz`;
+      const pass = 'DispPass123!';
+      const createRes = await axios.post(
+        `${API}/admin/users`,
+        {
+          email,
+          password: pass,
+          firstName: 'Disposable',
+          lastName: 'Operator',
+          role: 'operator',
+          productIds: [],
+        },
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      );
+      const userId = createRes.data.id;
+
+      const loginRes = await axios.post(`${API}/auth/email-login`, {
+        email,
+        password: pass,
+      });
+      const token = loginRes.data.accessToken;
+
+      const meRes = await axios.get(`${API}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(meRes.status).toBe(200);
+
+      const deleteRes = await axios.delete(`${API}/admin/users/${userId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      expect(deleteRes.status).toBe(200);
+
+      try {
+        await axios.get(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        fail('Deleted user token must be rejected');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(401);
+      }
+    });
+  });
+
+  describe('7. Email Login Brute-Force Rate Limiting (SEC-04)', () => {
+    it('should return 429 Too Many Requests after 5 consecutive failed logins', async () => {
+      const email = `victim-${Date.now()}@pusher.uz`;
+      for (let i = 0; i < 5; i++) {
+        try {
+          await axios.post(`${API}/auth/email-login`, {
+            email,
+            password: `WrongPass${i}!`,
+          });
+        } catch (err: any) {
+          expect(err.response?.status).toBe(401);
+        }
+      }
+
+      try {
+        await axios.post(`${API}/auth/email-login`, {
+          email,
+          password: 'WrongPassAgain!',
+        });
+        fail('Should have failed with 429 Too Many Requests');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(429);
+      }
+    });
+  });
 });

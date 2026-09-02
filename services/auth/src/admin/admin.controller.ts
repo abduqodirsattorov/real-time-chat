@@ -21,6 +21,12 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
 
 function requireAdmin(user: JwtPayload) {
+  if (user.role !== 'admin') {
+    throw new ForbiddenException('Faqat admin foydalana oladi');
+  }
+}
+
+function requireStaff(user: JwtPayload) {
   if (user.role !== 'admin' && user.role !== 'supervisor') {
     throw new ForbiddenException('Faqat admin va supervisor foydalana oladi');
   }
@@ -38,7 +44,7 @@ export class AdminController {
     @Query('page') page = '1',
     @Query('limit') limit = '50',
   ) {
-    requireAdmin(user);
+    requireStaff(user);
     return this.adminService.listUsers({ role, page: Number(page), limit: Number(limit) });
   }
 
@@ -51,7 +57,7 @@ export class AdminController {
 
   @Get('users/:id')
   getUser(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
-    requireAdmin(user);
+    requireStaff(user);
     return this.adminService.getUser(id);
   }
 

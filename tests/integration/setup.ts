@@ -39,8 +39,14 @@ export async function getAdminToken(): Promise<string> {
 export async function getOtpToken(phone: string): Promise<string> {
   const http = axios.create({ baseURL: BASE, validateStatus: () => true });
 
-  // 1. Trigger OTP (if rate limited, reuse active Redis OTP)
-  const sendRes = await http.post('/auth/login', { phone });
+  // 1. Trigger OTP (if daily limit hit in test env, clear counter)
+  let sendRes = await http.post('/auth/login', { phone });
+  if (sendRes.status === 400 && JSON.stringify(sendRes.data).includes('Kunlik OTP limiti')) {
+    try {
+      execSync(`docker compose exec -T redis redis-cli del "auth:daily_otp:${phone}"`, { cwd: PROJECT_DIR, timeout: 5000 });
+      sendRes = await http.post('/auth/login', { phone });
+    } catch {}
+  }
   if (sendRes.status !== 200 && !JSON.stringify(sendRes.data).includes('Bir daqiqada faqat 1 ta OTP')) {
     throw new Error(`OTP send failed ${sendRes.status}: ${JSON.stringify(sendRes.data)}`);
   }

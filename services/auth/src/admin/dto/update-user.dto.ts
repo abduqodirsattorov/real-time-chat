@@ -16,4 +16,8 @@ export class UpdateUserDto {
   @IsString({ each: true })
   @Matches(UUID_REGEX, { each: true })
   productIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

@@ -26,7 +26,7 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     networks:
       - nova-net
     healthcheck:
@@ -42,7 +42,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - nova-net
     healthcheck:
@@ -62,8 +62,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     networks:
       - nova-net
     healthcheck:
@@ -98,8 +98,8 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     networks:
       - nova-net
     healthcheck:
@@ -117,7 +117,7 @@ services:
     volumes:
       - meili_data:/meili_data
     ports:
-      - "7700:7700"
+      - "127.0.0.1:7700:7700"
     networks:
       - nova-net
     healthcheck:
@@ -136,7 +136,7 @@ services:
     volumes:
       - ./infra/centrifugo/config.json:/centrifugo/config.json:ro
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     networks:
       - nova-net
     depends_on:
@@ -206,7 +206,7 @@ services:
       NOVA_SSO_SECRET: ${NOVA_SSO_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     networks:
       - nova-net
     depends_on:
@@ -241,7 +241,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3002
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3002:3002"
     networks:
       - nova-net
     depends_on:
@@ -276,7 +276,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3003
     ports:
-      - "3003:3003"
+      - "127.0.0.1:3003:3003"
     networks:
       - nova-net
     depends_on:
@@ -312,7 +312,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3004
     ports:
-      - "3004:3004"
+      - "127.0.0.1:3004:3004"
     networks:
       - nova-net
     depends_on:
@@ -359,7 +359,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3005
     ports:
-      - "3005:3005"
+      - "127.0.0.1:3005:3005"
     networks:
       - nova-net
     depends_on:
@@ -397,7 +397,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3006
     ports:
-      - "3006:3006"
+      - "127.0.0.1:3006:3006"
     networks:
       - nova-net
     depends_on:
@@ -437,7 +437,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3007
     ports:
-      - "3007:3007"
+      - "127.0.0.1:3007:3007"
     networks:
       - nova-net
     depends_on:
@@ -469,7 +469,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3008
     ports:
-      - "3008:3008"
+      - "127.0.0.1:3008:3008"
     networks:
       - nova-net
     depends_on:
@@ -496,7 +496,7 @@ services:
       MOCK_NOVA_HMAC_SECRET: ${NOVA_HMAC_SECRET:-nova_hmac_secret_change_me_32c}
       PORT: 3009
     ports:
-      - "3009:3009"
+      - "127.0.0.1:3009:3009"
     networks:
       - nova-net
     healthcheck:
@@ -513,7 +513,7 @@ services:
       context: ./operator-panel
       dockerfile: Dockerfile
     ports:
-      - "8090:80"
+      - "127.0.0.1:8090:80"
     networks:
       - nova-net
     depends_on:
@@ -537,7 +537,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infra/traefik/dynamic.yml:/traefik/dynamic.yml:ro
@@ -557,7 +557,7 @@ services:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prom_data:/prometheus
     ports:
-      - "9091:9090"
+      - "127.0.0.1:9091:9090"
     networks:
       - nova-net
     healthcheck:
@@ -577,7 +577,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     networks:
       - nova-net
     depends_on:
@@ -591,7 +591,7 @@ services:
     volumes:
       - loki_data:/loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     networks:
       - nova-net
     restart: unless-stopped

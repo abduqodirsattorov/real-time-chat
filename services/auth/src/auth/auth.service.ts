@@ -5,6 +5,8 @@ import {
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -122,13 +124,34 @@ export class AuthService {
   // ── Email + Password Login (operator/admin) ───────────────────────────────────
 
   async emailLogin(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.passwordHash) throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
+    const normalizedEmail = email.toLowerCase().trim();
+    const failedKey = `auth:failed_login:${normalizedEmail}`;
+    const failedCount = Number((await this.redis.get(failedKey)) || 0);
+    if (failedCount >= 5) {
+      throw new HttpException(
+        'Juda ko\'p muvaffaqiyatsiz urinishlar. Iltimos, 15 daqiqadan so\'ng qayta urinib ko\'ring',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user || !user.passwordHash) {
+      const attempts = await this.redis.incr(failedKey);
+      if (attempts === 1) await this.redis.expire(failedKey, 900);
+      throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
+    }
     if (user.status === 'suspended') throw new ForbiddenException('Hisobingiz bloklangan');
     if (user.role === 'customer') throw new ForbiddenException('Bu kirish turi faqat operator va adminlar uchun');
 
     const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
+    if (!valid) {
+      const attempts = await this.redis.incr(failedKey);
+      if (attempts === 1) await this.redis.expire(failedKey, 900);
+      throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
+    }
+
+    // Reset failed attempts on successful login
+    await this.redis.del(failedKey);
 
     this.logger.log({ event: 'email_login', userId: user.id });
     return this.issueTokens(user.id, user.role, user.locale);

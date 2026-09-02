@@ -6,15 +6,24 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { UserRole, UserStatus } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const BCRYPT_ROUNDS = 10;
+const K = {
+  sessions: (userId: string) => `auth:sessions:${userId}`,
+  refresh: (jti: string) => `auth:refresh:${jti}`,
+  revoked: (userId: string) => `auth:revoked:${userId}`,
+};
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   async listUsers(opts: { role?: string; page: number; limit: number }) {
     const where = opts.role
@@ -115,10 +124,23 @@ export class AdminService {
       updates.fullName = `${first} ${last}`.trim();
     }
 
+    if (dto.status !== undefined) {
+      updates.status = dto.status as UserStatus;
+      if (dto.status === 'suspended' || dto.status === 'deleted') {
+        await this.redis.set(K.revoked(id), dto.status, 3600);
+        const sessions = await this.redis.smembers(K.sessions(id));
+        for (const s of sessions) await this.redis.del(K.refresh(s));
+        await this.redis.del(K.sessions(id));
+        await this.redis.zrem('operator:available', id);
+      } else if (dto.status === 'active') {
+        await this.redis.del(K.revoked(id));
+      }
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: updates,
-      select: { id: true, fullName: true, email: true, role: true },
+      select: { id: true, fullName: true, email: true, role: true, status: true },
     });
 
     // Update product permissions if provided
@@ -145,13 +167,36 @@ export class AdminService {
     await this.getUser(id);
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+
+    // Revoke old tokens on password reset
+    await this.redis.set(K.revoked(id), 'password_changed', 3600);
+    const sessions = await this.redis.smembers(K.sessions(id));
+    for (const s of sessions) await this.redis.del(K.refresh(s));
+    await this.redis.del(K.sessions(id));
+
     return { message: 'Parol yangilandi' };
   }
 
   async deleteUser(id: string, requestingUserId: string) {
     if (id === requestingUserId) throw new ForbiddenException('O\'zingizni o\'chira olmaysiz');
-    await this.getUser(id);
+    const target = await this.getUser(id);
+    if (target.email === 'admin@pusher.uz') {
+      throw new ForbiddenException('Asosiy super adminni o\'chirib bo\'lmaydi');
+    }
+
     await this.prisma.user.update({ where: { id }, data: { status: 'deleted' } });
+
+    // Instantly invalidate access tokens across services
+    await this.redis.set(K.revoked(id), 'deleted', 3600);
+
+    // Delete all refresh sessions
+    const sessions = await this.redis.smembers(K.sessions(id));
+    for (const s of sessions) await this.redis.del(K.refresh(s));
+    await this.redis.del(K.sessions(id));
+
+    // Remove from operator pool
+    await this.redis.zrem('operator:available', id);
+
     return { message: 'Foydalanuvchi o\'chirildi' };
   }
 }

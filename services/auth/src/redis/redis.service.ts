@@ -63,6 +63,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.srem(key, ...members);
   }
 
+  async zrem(key: string, ...members: string[]): Promise<void> {
+    await this.client.zrem(key, ...members);
+  }
+
   async ping(): Promise<boolean> {
     try {
       const result = await this.client.ping();
