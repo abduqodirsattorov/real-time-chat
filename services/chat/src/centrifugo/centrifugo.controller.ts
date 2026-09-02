@@ -65,9 +65,14 @@ export class CentrifugoWebhookController {
 
     const isStaff = ['operator', 'supervisor', 'admin'].includes(user.role);
 
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     // 1. Shaxsiy bildirishnoma kanali: chat:user#<userId>
     if (channel.startsWith('chat:user#')) {
       const targetUserId = channel.replace('chat:user#', '');
+      if (!UUID_REGEX.test(targetUserId)) {
+        return { error: { code: 1004, message: 'Invalid user UUID' } };
+      }
       if (targetUserId !== userId && user.role !== 'admin') {
         this.logger.warn({ event: 'centrifugo_subscribe_user_channel_denied', userId, targetUserId });
         return { error: { code: 1000, message: 'Cannot subscribe to other user channel' } };
@@ -78,6 +83,9 @@ export class CentrifugoWebhookController {
     // 2. Chat xonasi kanali: chat:room#<roomId>
     if (channel.startsWith('chat:room#')) {
       const roomId = channel.replace('chat:room#', '');
+      if (!UUID_REGEX.test(roomId)) {
+        return { error: { code: 1004, message: 'Invalid room UUID' } };
+      }
       const room = await this.prisma.room.findUnique({
         where: { id: roomId },
         include: {
@@ -122,6 +130,9 @@ export class CentrifugoWebhookController {
     // 4. Qo'ng'iroq kanali: call:call#<callId>
     if (channel.startsWith('call:call#') || channel.startsWith('call:')) {
       const callId = channel.replace('call:call#', '').replace('call:', '');
+      if (!UUID_REGEX.test(callId)) {
+        return { error: { code: 1004, message: 'Invalid call UUID' } };
+      }
       const call = await this.prisma.call.findUnique({
         where: { id: callId },
       });

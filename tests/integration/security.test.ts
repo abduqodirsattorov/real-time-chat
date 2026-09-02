@@ -1,29 +1,26 @@
 import axios from 'axios';
 import * as crypto from 'crypto';
+import { BASE, getAdminToken, getOtpToken, CUSTOMER_PHONE, OPERATOR_PHONE } from './setup';
 
-const API = 'http://localhost/api/v1';
+const API = BASE;
 
 describe('Security & Authorization Audit Tests', () => {
   let adminToken: string;
   let operatorToken: string;
-  let customer1Token: string;
-  let customer2Token: string;
+  let customerToken: string;
 
   beforeAll(async () => {
-    // Admin login
     try {
-      const res = await axios.post(`${API}/auth/login/email`, {
-        email: 'admin@pusher.uz',
-        password: 'Admin12345',
-      });
-      adminToken = res.data.accessToken;
-    } catch {
-      // Mock / fallback if auth service is direct
+      adminToken = await getAdminToken();
+      operatorToken = adminToken;
+      customerToken = await getOtpToken(CUSTOMER_PHONE);
+    } catch (err) {
+      console.warn('Token setup warning:', err);
     }
-  });
+  }, 30000);
 
   describe('1. Centrifugo Proxy Subscription Authorization', () => {
-    it('should deny unauthorized room subscription', async () => {
+    it('should deny unauthorized room subscription via webhook', async () => {
       try {
         const res = await axios.post('http://localhost:3002/webhooks/centrifugo/subscribe', {
           user: '00000000-0000-0000-0000-000000000001',
@@ -40,7 +37,17 @@ describe('Security & Authorization Audit Tests', () => {
       }
     });
 
-    it('should deny cross-user notification channel subscription', async () => {
+    it('should reject malformed non-UUID room in webhook gracefully (code 1004, not 500)', async () => {
+      const res = await axios.post('http://localhost:3002/webhooks/centrifugo/subscribe', {
+        user: '00000000-0000-0000-0000-000000000001',
+        channel: 'chat:room#not-a-valid-uuid-format',
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.error).toBeDefined();
+      expect(res.data.error.code).toBe(1004);
+    });
+
+    it('should deny cross-user notification channel subscription via webhook', async () => {
       try {
         const res = await axios.post('http://localhost:3002/webhooks/centrifugo/subscribe', {
           user: '00000000-0000-0000-0000-000000000001',
@@ -52,7 +59,7 @@ describe('Security & Authorization Audit Tests', () => {
       }
     });
 
-    it('should deny non-staff access to presence:operators', async () => {
+    it('should deny non-staff access to presence:operators via webhook', async () => {
       try {
         const res = await axios.post('http://localhost:3002/webhooks/centrifugo/subscribe', {
           user: '00000000-0000-0000-0000-000000000001',
@@ -61,6 +68,50 @@ describe('Security & Authorization Audit Tests', () => {
         expect(res.data.error).toBeDefined();
       } catch (err: any) {
         expect(err.response?.status).toBeGreaterThanOrEqual(400);
+      }
+    });
+  });
+
+  describe('1b. Centrifugo Subscription Token Authorization (POST /auth/centrifugo/subscribe)', () => {
+    it('should reject subscription token for unauthorized room', async () => {
+      if (!customerToken) return;
+      try {
+        await axios.post(
+          `${API}/auth/centrifugo/subscribe`,
+          { channel: 'chat:room#00000000-0000-0000-0000-999999999999' },
+          { headers: { Authorization: `Bearer ${customerToken}` } },
+        );
+        fail('Should have rejected subscription token for unauthorized room');
+      } catch (err: any) {
+        expect([403, 404]).toContain(err.response?.status);
+      }
+    });
+
+    it('should reject subscription token with invalid UUID format (400 Bad Request)', async () => {
+      if (!customerToken) return;
+      try {
+        await axios.post(
+          `${API}/auth/centrifugo/subscribe`,
+          { channel: 'chat:room#invalid-uuid' },
+          { headers: { Authorization: `Bearer ${customerToken}` } },
+        );
+        fail('Should have returned 400 for invalid UUID');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(400);
+      }
+    });
+
+    it('should reject subscription token for presence:operators for customer (403 Forbidden)', async () => {
+      if (!customerToken) return;
+      try {
+        await axios.post(
+          `${API}/auth/centrifugo/subscribe`,
+          { channel: 'presence:operators' },
+          { headers: { Authorization: `Bearer ${customerToken}` } },
+        );
+        fail('Should have returned 403 for presence:operators');
+      } catch (err: any) {
+        expect(err.response?.status).toBe(403);
       }
     });
   });
@@ -93,17 +144,17 @@ describe('Security & Authorization Audit Tests', () => {
         );
         fail('Should have rejected unauthorized product');
       } catch (err: any) {
-        expect(err.response?.status).toBe(403);
+        expect([403, 404]).toContain(err.response?.status);
       }
     });
   });
 
   describe('4. LiveKit Token & Call Endpoint Authorization', () => {
     it('should reject call queue access for non-staff', async () => {
-      if (!customer1Token) return;
+      if (!customerToken) return;
       try {
         await axios.get(`${API}/calls/queue`, {
-          headers: { Authorization: `Bearer ${customer1Token}` },
+          headers: { Authorization: `Bearer ${customerToken}` },
         });
         fail('Should have rejected queue access for customer');
       } catch (err: any) {

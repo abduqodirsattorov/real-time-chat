@@ -136,6 +136,7 @@ model User {
 
   operatorState    OperatorState?
   operatorProducts OperatorProduct[]
+  devices          Device[]
 
   @@map("users")
 }
@@ -207,11 +208,12 @@ model Room {
 // ── RoomMember ─────────────────────────────────────────────────────────────────
 
 model RoomMember {
-  roomId   String    @map("room_id") @db.Uuid
-  userId   String    @map("user_id") @db.Uuid
-  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz()
-  leftAt   DateTime? @map("left_at") @db.Timestamptz()
-  muted    Boolean   @default(false)
+  roomId            String    @map("room_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  joinedAt          DateTime  @default(now()) @map("joined_at") @db.Timestamptz()
+  leftAt            DateTime? @map("left_at") @db.Timestamptz()
+  lastReadMessageId String?   @map("last_read_message_id") @db.Uuid
+  muted             Boolean   @default(false)
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
@@ -223,16 +225,18 @@ model RoomMember {
 // ── Message — TimescaleDB hypertable ──────────────────────────────────────────
 
 model Message {
-  id        String      @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  roomId    String      @map("room_id") @db.Uuid
-  senderId  String      @map("sender_id") @db.Uuid
-  type      MessageType @default(text)
-  content   String?
-  replyToId String?     @map("reply_to_id") @db.Uuid
-  editedAt  DateTime?   @map("edited_at") @db.Timestamptz()
-  deletedAt DateTime?   @map("deleted_at") @db.Timestamptz()
-  metadata  Json        @default("{}")
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  id            String      @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  roomId        String      @map("room_id") @db.Uuid
+  senderId      String      @map("sender_id") @db.Uuid
+  type          MessageType @default(text)
+  content       String?
+  contentLocale UserLocale? @map("content_locale")
+  attachmentId  String?     @map("attachment_id") @db.Uuid
+  replyToId     String?     @map("reply_to_id") @db.Uuid
+  editedAt      DateTime?   @map("edited_at") @db.Timestamptz()
+  deletedAt     DateTime?   @map("deleted_at") @db.Timestamptz()
+  metadata      Json        @default("{}")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz()
 
   @@id([id, createdAt])
   @@index([roomId, createdAt(sort: Desc)])
@@ -488,4 +492,24 @@ model Recording {
   call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
 
   @@map("recordings")
+}
+
+// ── Device ────────────────────────────────────────────────────────────────────
+
+model Device {
+  id         String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String      @map("user_id") @db.Uuid
+  platform   String      @db.VarChar(32)
+  pushToken  String      @map("push_token")
+  voipToken  String?     @map("voip_token")
+  deviceName String?     @map("device_name") @db.VarChar(255)
+  appVersion String?     @map("app_version") @db.VarChar(32)
+  locale     UserLocale?
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("devices")
 }

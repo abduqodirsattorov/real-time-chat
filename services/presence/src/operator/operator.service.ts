@@ -180,13 +180,20 @@ export class OperatorService {
   async selectProduct(user: JwtUser, productId: string) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
 
-    if (productId && user.role !== 'admin') {
-      const allowed = await this.prisma.operatorProduct.findFirst({
-        where: { userId: user.sub, productId },
-      });
-      if (!allowed) {
-        this.logger.warn({ event: 'unauthorized_product_switch_attempt', userId: user.sub, productId });
-        throw new ForbiddenException('Ushbu mahsulotga kirish huquqingiz yo\'q');
+    if (productId) {
+      const product = await this.prisma.product.findUnique({ where: { id: productId } });
+      if (!product || !product.isActive) {
+        throw new NotFoundException('Mahsulot topilmadi yoki nofaol');
+      }
+
+      if (user.role !== 'admin') {
+        const allowed = await this.prisma.operatorProduct.findFirst({
+          where: { userId: user.sub, productId },
+        });
+        if (!allowed) {
+          this.logger.warn({ event: 'unauthorized_product_switch_attempt', userId: user.sub, productId });
+          throw new ForbiddenException('Ushbu mahsulotga kirish huquqingiz yo\'q');
+        }
       }
     }
 

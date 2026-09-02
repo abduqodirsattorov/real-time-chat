@@ -39,9 +39,9 @@ export async function getAdminToken(): Promise<string> {
 export async function getOtpToken(phone: string): Promise<string> {
   const http = axios.create({ baseURL: BASE, validateStatus: () => true });
 
-  // 1. Trigger OTP
+  // 1. Trigger OTP (if rate limited, reuse active Redis OTP)
   const sendRes = await http.post('/auth/login', { phone });
-  if (sendRes.status !== 200) {
+  if (sendRes.status !== 200 && !JSON.stringify(sendRes.data).includes('Bir daqiqada faqat 1 ta OTP')) {
     throw new Error(`OTP send failed ${sendRes.status}: ${JSON.stringify(sendRes.data)}`);
   }
 

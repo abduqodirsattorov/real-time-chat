@@ -226,9 +226,89 @@ export class AuthService {
     const secret = process.env.CENTRIFUGO_TOKEN_SECRET;
     if (!secret) throw new Error('CENTRIFUGO_TOKEN_SECRET not configured');
 
-    const [ns] = dto.channel.split(':');
+    const channel = dto.channel;
+    const [ns] = channel.split(':');
     const allowed = ['chat', 'presence', 'call'];
     if (!allowed.includes(ns)) throw new BadRequestException('Noto\'g\'ri kanal namespace');
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Fetch requesting user
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, status: true },
+    });
+
+    if (!user || user.status === 'suspended') {
+      throw new UnauthorizedException('Foydalanuvchi topilmadi yoki bloklangan');
+    }
+
+    const isStaff = ['operator', 'supervisor', 'admin'].includes(user.role);
+
+    // 1. Shaxsiy bildirishnoma kanali: chat:user#<userId>
+    if (channel.startsWith('chat:user#')) {
+      const targetUserId = channel.replace('chat:user#', '');
+      if (targetUserId !== userId && user.role !== 'admin') {
+        this.logger.warn({ event: 'centrifugo_token_user_denied', userId, targetUserId });
+        throw new ForbiddenException('Boshqa foydalanuvchi kanaliga obuna bo\'lish huquqi yo\'q');
+      }
+    }
+    // 2. Chat xonasi kanali: chat:room#<roomId>
+    else if (channel.startsWith('chat:room#')) {
+      const roomId = channel.replace('chat:room#', '');
+      if (!UUID_REGEX.test(roomId)) {
+        throw new BadRequestException('Noto\'g\'ri xona ID formati');
+      }
+
+      const room = await this.prisma.room.findUnique({
+        where: { id: roomId },
+        include: {
+          members: { where: { userId, leftAt: null } },
+        },
+      });
+
+      if (!room) {
+        throw new NotFoundException('Xona topilmadi');
+      }
+
+      let hasAccess = false;
+      if (room.members.length > 0) {
+        hasAccess = true;
+      } else if (isStaff) {
+        if (!room.productId || user.role === 'admin') {
+          hasAccess = true;
+        } else {
+          const hasProductAccess = await this.prisma.operatorProduct.findFirst({
+            where: { userId, productId: room.productId },
+          });
+          if (hasProductAccess) {
+            hasAccess = true;
+          }
+        }
+      }
+
+      if (!hasAccess) {
+        this.logger.warn({ event: 'centrifugo_token_room_denied', userId, roomId });
+        throw new ForbiddenException('Ushbu xonaga obuna bo\'lish huquqingiz yo\'q');
+      }
+    }
+    // 3. Operatorlar mavjudlik kanali: presence:operators
+    else if (channel === 'presence:operators') {
+      if (!isStaff) {
+        this.logger.warn({ event: 'centrifugo_token_operators_presence_denied', userId });
+        throw new ForbiddenException('Faqat operator/supervisor/admin obuna bo\'la oladi');
+      }
+    }
+    // 4. Qo'ng'iroq kanali: call:call#<callId> yoki call:<callId>
+    else if (channel.startsWith('call:call#') || channel.startsWith('call:')) {
+      const callId = channel.replace('call:call#', '').replace('call:', '');
+      if (UUID_REGEX.test(callId)) {
+        const call = await this.prisma.call.findUnique({ where: { id: callId } });
+        if (call && call.callerId !== userId && call.calleeId !== userId && !isStaff) {
+          throw new ForbiddenException('Qo\'ng\'iroq kanaliga ruxsat yo\'q');
+        }
+      }
+    }
 
     const token = this.jwt.sign(
       { sub: userId, channel: dto.channel },

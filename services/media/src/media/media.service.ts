@@ -187,21 +187,32 @@ export class MediaService implements OnModuleInit {
     const isStaff = ['operator', 'supervisor', 'admin'].includes(user.role);
     if (isStaff) return;
 
+    // Yuklovchi o'zi bo'lsa ruxsat
     if (att.uploaderId === user.sub) return;
 
-    const sharedRoom = await this.prisma.roomMember.findFirst({
+    // Fayl biriktirilgan xabarni topish (attachment_id yoki metadata orqali)
+    const message = await this.prisma.message.findFirst({
       where: {
-        userId: user.sub,
-        leftAt: null,
-        room: {
-          members: {
-            some: { userId: att.uploaderId },
-          },
-        },
+        OR: [
+          { attachmentId: att.id },
+          { metadata: { path: ['attachment_id'], equals: att.id } },
+          { metadata: { path: ['attachmentId'], equals: att.id } },
+        ],
       },
+      select: { roomId: true },
     });
 
-    if (sharedRoom) return;
+    if (message) {
+      // Foydalanuvchi aynan o'sha xonaning faol a'zosi bo'lishi shart
+      const isMember = await this.prisma.roomMember.findFirst({
+        where: {
+          roomId: message.roomId,
+          userId: user.sub,
+          leftAt: null,
+        },
+      });
+      if (isMember) return;
+    }
 
     this.logger.warn({ event: 'unauthorized_attachment_access', userId: user.sub, attachmentId: att.id });
     throw new ForbiddenException('Ushbu faylga kirish huquqingiz yo\'q');
