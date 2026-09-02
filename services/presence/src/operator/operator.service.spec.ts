@@ -13,6 +13,7 @@ const mockPrisma = {
     findUnique: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
+    upsert: jest.fn(),
   },
   auditLog: { create: jest.fn() },
   user: { findUnique: jest.fn() },
@@ -61,17 +62,21 @@ describe('OperatorService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('2. throws NotFoundException if operator_state missing', async () => {
+  it('2. auto-creates operator_state on upsert if missing', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue(null);
-    await expect(
-      operatorSvc.updateStatus(operatorUser as any, { status: OperatorStatusEnum.available }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'op-uuid-1', status: 'available', activeChats: 0 });
+    mockPrisma.auditLog.create.mockResolvedValue({});
+    mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
+
+    const result = await operatorSvc.updateStatus(operatorUser as any, { status: OperatorStatusEnum.available });
+    expect(result.status).toBe('available');
+    expect(mockPrisma.operatorState.upsert).toHaveBeenCalled();
   });
 
   // ── 2. Status transitions ─────────────────────────────────────────────────────
   it('3. offline → available: adds to ZSET and publishes event', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue({ userId: 'op-uuid-1', status: 'offline', activeChats: 0 });
-    mockPrisma.operatorState.update.mockResolvedValue({});
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'op-uuid-1', status: 'available', activeChats: 0 });
     mockPrisma.auditLog.create.mockResolvedValue({});
     mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
 
@@ -87,7 +92,7 @@ describe('OperatorService', () => {
 
   it('4. available → busy: removes from ZSET', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue({ userId: 'op-uuid-1', status: 'available', activeChats: 2 });
-    mockPrisma.operatorState.update.mockResolvedValue({});
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'op-uuid-1', status: 'busy', activeChats: 2 });
     mockPrisma.auditLog.create.mockResolvedValue({});
     mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
 
@@ -101,7 +106,7 @@ describe('OperatorService', () => {
 
   it('5. on_call → available: publishes correct transition', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue({ userId: 'op-uuid-1', status: 'on_call', activeChats: 1 });
-    mockPrisma.operatorState.update.mockResolvedValue({});
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'op-uuid-1', status: 'available', activeChats: 1 });
     mockPrisma.auditLog.create.mockResolvedValue({});
     mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
 
@@ -112,7 +117,7 @@ describe('OperatorService', () => {
 
   it('6. supervisor can change status', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue({ userId: 'sup-uuid-1', status: 'offline', activeChats: 0 });
-    mockPrisma.operatorState.update.mockResolvedValue({});
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'sup-uuid-1', status: 'available', activeChats: 0 });
     mockPrisma.auditLog.create.mockResolvedValue({});
     mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
 
@@ -122,7 +127,7 @@ describe('OperatorService', () => {
 
   it('7. audit log is created on status change', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue({ userId: 'op-uuid-1', status: 'offline', activeChats: 0 });
-    mockPrisma.operatorState.update.mockResolvedValue({});
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'op-uuid-1', status: 'available', activeChats: 0 });
     mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
     mockPrisma.auditLog.create.mockResolvedValue({});
 
@@ -135,7 +140,7 @@ describe('OperatorService', () => {
   // ── 3. ZSET update ────────────────────────────────────────────────────────────
   it('8. atomicStatusUpdate called with score=activeChats', async () => {
     mockPrisma.operatorState.findUnique.mockResolvedValue({ userId: 'op-uuid-1', status: 'offline', activeChats: 3 });
-    mockPrisma.operatorState.update.mockResolvedValue({});
+    mockPrisma.operatorState.upsert.mockResolvedValue({ userId: 'op-uuid-1', status: 'available', activeChats: 3 });
     mockPrisma.auditLog.create.mockResolvedValue({});
     mockRedis.atomicStatusUpdate.mockResolvedValue(undefined);
 

@@ -23,6 +23,10 @@ const prisma = {
   },
   roomMember: { findUnique: jest.fn() },
   user: { findUnique: jest.fn() },
+  operatorProduct: {
+    findMany: jest.fn().mockResolvedValue([]),
+    findFirst: jest.fn().mockResolvedValue(null),
+  },
 };
 const centrifugo = { publishToRoom: jest.fn() };
 const rabbitmq = { publish: jest.fn() };

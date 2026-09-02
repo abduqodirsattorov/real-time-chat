@@ -189,6 +189,20 @@ export class MediaService implements OnModuleInit {
 
     if (att.uploaderId === user.sub) return;
 
+    const sharedRoom = await this.prisma.roomMember.findFirst({
+      where: {
+        userId: user.sub,
+        leftAt: null,
+        room: {
+          members: {
+            some: { userId: att.uploaderId },
+          },
+        },
+      },
+    });
+
+    if (sharedRoom) return;
+
     this.logger.warn({ event: 'unauthorized_attachment_access', userId: user.sub, attachmentId: att.id });
     throw new ForbiddenException('Ushbu faylga kirish huquqingiz yo\'q');
   }

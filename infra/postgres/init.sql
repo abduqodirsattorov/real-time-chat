@@ -253,6 +253,7 @@ CREATE TABLE calls (
   product_id          UUID REFERENCES products(id),
   caller_id           UUID REFERENCES users(id),
   callee_id           UUID REFERENCES users(id),
+  operator_id         UUID REFERENCES users(id),
   direction           call_direction NOT NULL,
   status              call_status NOT NULL DEFAULT 'initiating',
   livekit_room        VARCHAR(255),
@@ -270,6 +271,7 @@ CREATE TABLE calls (
 
 CREATE INDEX idx_calls_caller ON calls(caller_id, initiated_at DESC);
 CREATE INDEX idx_calls_callee ON calls(callee_id, initiated_at DESC);
+CREATE INDEX idx_calls_operator ON calls(operator_id);
 CREATE INDEX idx_calls_status ON calls(status)
   WHERE status IN ('queued', 'ringing', 'connected', 'on_hold');
 CREATE INDEX idx_calls_product ON calls(product_id);
@@ -445,7 +447,8 @@ CREATE TABLE bot_configs (
   config            JSONB DEFAULT '{}',
   fallback_to_human BOOLEAN DEFAULT TRUE,
   handoff_keywords  TEXT[] DEFAULT ARRAY['operator', 'оператор', 'odam', 'человек'],
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ── KPI Views ──────────────────────────────────────────────────────────────────

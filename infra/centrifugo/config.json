@@ -14,20 +14,23 @@
       "history_ttl": "168h",
       "force_recovery": true,
       "allow_subscribe_for_client": false,
-      "allow_publish_for_client": false
+      "allow_publish_for_client": false,
+      "proxy_subscribe": true
     },
     {
       "name": "presence",
       "presence": true,
       "allow_subscribe_for_client": false,
-      "allow_publish_for_client": false
+      "allow_publish_for_client": false,
+      "proxy_subscribe": true
     },
     {
       "name": "call",
       "history_size": 10,
       "history_ttl": "1h",
       "allow_subscribe_for_client": false,
-      "allow_publish_for_client": false
+      "allow_publish_for_client": false,
+      "proxy_subscribe": true
     }
   ],
   "engine": "redis",

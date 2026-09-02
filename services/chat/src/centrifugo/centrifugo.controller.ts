@@ -5,7 +5,9 @@ import {
 import { Request } from 'express';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { Public } from '../common/decorators/current-user.decorator';
 
+@Public()
 @Controller('webhooks/centrifugo')
 export class CentrifugoWebhookController {
   private readonly logger = new Logger(CentrifugoWebhookController.name);

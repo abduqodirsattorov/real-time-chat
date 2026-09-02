@@ -355,6 +355,7 @@ services:
       RECORDING_ANNOUNCEMENT_URL_RU: http://minio:9000/nova-media/sys/recording_ru.mp3
       HOLD_MUSIC_URL: http://minio:9000/nova-media/sys/hold_music.mp3
       RECORDING_SERVICE_URL: http://recording-service:3007
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-internal_service_default_secret_key}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3005
     ports:
@@ -432,6 +433,7 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_SECRET: ${LIVEKIT_SECRET:-devsecret_change_me_32_chars_minimum_xx}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-internal_service_default_secret_key}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3007
     ports:

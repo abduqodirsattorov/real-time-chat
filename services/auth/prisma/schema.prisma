@@ -68,6 +68,7 @@ enum OperatorStatus {
   away
   on_call
   in_transfer
+  break
   @@map("operator_status")
 }
 

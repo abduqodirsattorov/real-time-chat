@@ -36,13 +36,24 @@ const mockPrisma = {
   operatorState: {
     findMany: jest.fn(),
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
   },
   user: {
     findUnique: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
   },
+  $transaction: jest.fn().mockImplementation((arg: any) => Array.isArray(arg) ? Promise.all(arg) : (typeof arg === 'function' ? arg(mockPrisma) : arg)),
 };
 
-const mockRedis = { setnx: jest.fn(), del: jest.fn(), get: jest.fn(), isOnline: jest.fn() };
+const mockRedis = {
+  setnx: jest.fn(),
+  del: jest.fn(),
+  get: jest.fn(),
+  set: jest.fn(),
+  isOnline: jest.fn().mockResolvedValue(true),
+};
 const mockRabbitmq = { publish: jest.fn() };
 const mockCentrifugo = { publishToUser: jest.fn(), publish: jest.fn(), playAudioToCall: jest.fn(), publishToRoom: jest.fn() };
 const mockLivekit = {
@@ -215,7 +226,7 @@ describe('CallsService', () => {
 
     await service.outboundCall(operatorUser, { calleeId: 'cust-1' });
     expect(mockRabbitmq.publish).toHaveBeenCalledWith('call.initiated', expect.objectContaining({ voip_push_needed: true }));
-    expect(mockCentrifugo.publishToUser).not.toHaveBeenCalled();
+    expect(mockCentrifugo.publishToUser).toHaveBeenCalledWith('cust-1', 'call.incoming', expect.any(Object));
   });
 
   // ── Recording consent flow ────────────────────────────────────────────────────

@@ -50,7 +50,7 @@ export class RoomsService {
           select: { productId: true },
         });
         const productIds = ops.map(o => o.productId);
-        productFilter = { productId: { in: productIds } };
+        productFilter = productIds.length > 0 ? { productId: { in: productIds } } : {};
       }
     }
 

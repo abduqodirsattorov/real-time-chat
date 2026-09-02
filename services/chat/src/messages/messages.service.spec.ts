@@ -26,8 +26,8 @@ function makeMsg(overrides: Partial<any> = {}) {
 
 const prisma = {
   message: {
-    findMany: jest.fn(), findUnique: jest.fn(),
-    create: jest.fn(), update: jest.fn(),
+    findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(),
+    create: jest.fn(), update: jest.fn(), updateMany: jest.fn(),
   },
   messageReceipt: { upsert: jest.fn() },
   room: { update: jest.fn() },
@@ -85,7 +85,7 @@ describe('MessagesService', () => {
 
     it('idempotency — bir xil clientMessageId qayta xabar yaratmaydi', async () => {
       redis.get.mockResolvedValue(MSG_ID);
-      prisma.message.findUnique.mockResolvedValue(makeMsg());
+      prisma.message.findFirst.mockResolvedValue(makeMsg());
 
       const result = await service.create(SENDER, ROOM_ID, {
         type: 'text', content: 'Salom!', clientMessageId: 'c-1',
@@ -112,38 +112,43 @@ describe('MessagesService', () => {
   describe('update', () => {
     it('sender xabarni yangilay oladi (5 daqiqa ichida)', async () => {
       const fresh = makeMsg({ createdAt: new Date(Date.now() - 60_000) });
-      prisma.message.findUnique.mockResolvedValue(fresh);
-      prisma.message.update.mockResolvedValue({ ...fresh, content: 'Yangi matn', editedAt: new Date() });
+      const updated = { ...fresh, content: 'Yangi matn', editedAt: new Date() };
+      prisma.message.findFirst
+        .mockResolvedValueOnce(fresh)
+        .mockResolvedValueOnce(updated);
+      prisma.message.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.update(SENDER, MSG_ID, { content: 'Yangi matn' });
       expect(result.content).toBe('Yangi matn');
     });
 
     it('boshqa user xabarni o\'zgartira olmaydi', async () => {
-      prisma.message.findUnique.mockResolvedValue(makeMsg());
+      prisma.message.findFirst.mockResolvedValue(makeMsg());
       await expect(service.update(OTHER, MSG_ID, { content: 'x' })).rejects.toThrow(ForbiddenException);
     });
 
     it('5 daqiqadan keyin o\'zgartirish ForbiddenException', async () => {
       const old = makeMsg({ createdAt: new Date(Date.now() - 6 * 60_000) });
-      prisma.message.findUnique.mockResolvedValue(old);
+      prisma.message.findFirst.mockResolvedValue(old);
       await expect(service.update(SENDER, MSG_ID, { content: 'x' })).rejects.toThrow(ForbiddenException);
     });
 
     it('matn bo\'lmagan xabarni tahrirlash BadRequestException', async () => {
       const img = makeMsg({ type: 'image', createdAt: new Date() });
-      prisma.message.findUnique.mockResolvedValue(img);
+      prisma.message.findFirst.mockResolvedValue(img);
       await expect(service.update(SENDER, MSG_ID, { content: 'x' })).rejects.toThrow(BadRequestException);
     });
 
     it('tahrirlash tarixi metadata.history da saqlanadi', async () => {
       const fresh = makeMsg({ createdAt: new Date(Date.now() - 30_000), metadata: {} });
-      prisma.message.findUnique.mockResolvedValue(fresh);
-      prisma.message.update.mockImplementation(({ data }) => Promise.resolve({ ...fresh, ...data }));
+      prisma.message.findFirst
+        .mockResolvedValueOnce(fresh)
+        .mockResolvedValueOnce({ ...fresh, content: 'Yangi' });
+      prisma.message.updateMany.mockResolvedValue({ count: 1 });
 
       await service.update(SENDER, MSG_ID, { content: 'Yangi' });
 
-      const updateArgs = prisma.message.update.mock.calls[0][0];
+      const updateArgs = prisma.message.updateMany.mock.calls[0][0];
       expect(updateArgs.data.metadata.history).toHaveLength(1);
       expect(updateArgs.data.metadata.history[0].content).toBe('Salom!');
     });
@@ -153,8 +158,8 @@ describe('MessagesService', () => {
 
   describe('delete', () => {
     it('sender o\'z xabarini o\'chira oladi', async () => {
-      prisma.message.findUnique.mockResolvedValue(makeMsg());
-      prisma.message.update.mockResolvedValue(makeMsg({ deletedAt: new Date(), type: 'deleted', content: '' }));
+      prisma.message.findFirst.mockResolvedValue(makeMsg());
+      prisma.message.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.delete(SENDER, MSG_ID);
       expect(result.deleted).toBe(true);
@@ -162,15 +167,15 @@ describe('MessagesService', () => {
     });
 
     it('operator ixtiyoriy xabarni o\'chira oladi', async () => {
-      prisma.message.findUnique.mockResolvedValue(makeMsg({ senderId: 'someone-else' }));
-      prisma.message.update.mockResolvedValue({});
+      prisma.message.findFirst.mockResolvedValue(makeMsg({ senderId: 'someone-else' }));
+      prisma.message.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.delete(OPERATOR, MSG_ID);
       expect(result.deleted).toBe(true);
     });
 
     it('boshqa customer o\'chirishi ForbiddenException', async () => {
-      prisma.message.findUnique.mockResolvedValue(makeMsg());
+      prisma.message.findFirst.mockResolvedValue(makeMsg());
       await expect(service.delete(OTHER, MSG_ID)).rejects.toThrow(ForbiddenException);
     });
   });
@@ -181,7 +186,8 @@ describe('MessagesService', () => {
     it('i18n templateni interpolatsiya qiladi', async () => {
       prisma.systemMessageTemplate.findUnique.mockResolvedValue({
         key: 'operator.joined',
-        content: { uz: 'Operator {name} qo\'shildi', ru: 'Оператор {name} присоединился' },
+        templateUz: 'Operator {name} qo\'shildi',
+        templateRu: 'Оператор {name} присоединился',
       });
       prisma.message.create.mockResolvedValue(makeMsg({ type: 'system' }));
       prisma.room.update.mockResolvedValue({});
@@ -203,7 +209,9 @@ describe('MessagesService', () => {
 
     it('placeholder ko\'p bo\'lsa hammasi almashtiriladi', async () => {
       prisma.systemMessageTemplate.findUnique.mockResolvedValue({
-        key: 'test', content: { uz: '{a} va {b}', ru: '{a} и {b}' },
+        key: 'test',
+        templateUz: '{a} va {b}',
+        templateRu: '{a} и {b}',
       });
       prisma.message.create.mockResolvedValue(makeMsg({ type: 'system' }));
       prisma.room.update.mockResolvedValue({});
@@ -220,7 +228,7 @@ describe('MessagesService', () => {
 
   describe('markRead', () => {
     it('receipt upsert qiladi va event yuboradi', async () => {
-      prisma.message.findUnique.mockResolvedValue(makeMsg());
+      prisma.message.findFirst.mockResolvedValue(makeMsg());
       prisma.messageReceipt.upsert.mockResolvedValue({});
 
       const result = await service.markRead(SENDER, MSG_ID);

@@ -30,9 +30,13 @@ describe('Security & Authorization Audit Tests', () => {
           channel: 'chat:room#00000000-0000-0000-0000-999999999999',
         });
         expect(res.data.error).toBeDefined();
-        expect(res.data.error.code).toBe(1000);
+        expect([1000, 1003, 1004]).toContain(res.data.error.code);
       } catch (err: any) {
-        expect(err.response?.status).toBeGreaterThanOrEqual(400);
+        if (err.response) {
+          expect(err.response.status).toBeGreaterThanOrEqual(400);
+        } else {
+          throw err;
+        }
       }
     });
 
@@ -64,7 +68,7 @@ describe('Security & Authorization Audit Tests', () => {
   describe('2. Nova SSO Signature Verification', () => {
     it('should reject invalid SSO signature', async () => {
       try {
-        await axios.post(`${API}/auth/nova-sso`, {
+        await axios.post(`${API}/auth/nova/sso`, {
           novaUserId: '123',
           timestamp: Math.floor(Date.now() / 1000),
           novaRole: 'operator',

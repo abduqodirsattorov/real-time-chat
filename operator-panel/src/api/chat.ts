@@ -30,7 +30,7 @@ export interface Message {
   createdAt: string;
 }
 
-export type RoomStatus = 'active' | 'pending' | 'closed' | 'archived';
+export type RoomStatus = 'open' | 'closed' | 'pending' | 'bot_handling';
 
 export interface PagedResult<T> {
   items: T[];

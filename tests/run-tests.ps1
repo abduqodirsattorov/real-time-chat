@@ -40,19 +40,11 @@ try {
 
 # Check HTTP gateway
 try {
-    $resp = Invoke-WebRequest -Uri "http://localhost:80/api/v1/health" -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
-    if ($resp.StatusCode -lt 500) {
-        Write-Ok "Gateway reachable (HTTP $($resp.StatusCode))"
-    }
+    $resp = Invoke-WebRequest -Uri "http://localhost:80/api/v1/auth/me" -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
+    Write-Ok "Gateway reachable"
 } catch {
-    # Health endpoint might not exist — try auth
-    try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:80/api/v1/auth/me" -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
-        Write-Ok "Gateway reachable"
-    } catch {
-        Write-Fail "Cannot reach http://localhost:80 — run: docker compose up -d"
-        exit 1
-    }
+    Write-Fail "Cannot reach http://localhost:80 — run: docker compose up -d"
+    exit 1
 }
 
 # Check npm in integration dir
@@ -120,8 +112,8 @@ if ($exitCode -eq 0) {
     Write-Fail "SOME TESTS FAILED (exit code $exitCode)"
     Write-Color "`nHints:" "Yellow"
     Write-Color "  1. docker compose up -d  (services must be running)" "Yellow"
-    Write-Color "  2. Admin email must exist: admin@pusher.uz / Admin12345" "Yellow"
-    Write-Color "     Create: docker compose exec postgres psql -U nova nova_chat -c `"INSERT INTO users (id,email,password_hash,full_name,role,status,locale,metadata) VALUES (uuid_generate_v4(),'admin@pusher.uz',crypt('Admin12345',gen_salt('bf',10)),'Super Admin','admin','active','uz','{}') ON CONFLICT (email) DO NOTHING;`"" "Yellow"
+    Write-Color '  2. Admin email must exist: admin@pusher.uz / Admin12345' "Yellow"
+    Write-Color '     Create: docker compose exec postgres psql -U nova nova_chat -c "INSERT INTO users (id,email,password_hash,full_name,role,status,locale,metadata) VALUES (uuid_generate_v4(),''admin@pusher.uz'',crypt(''Admin12345'',gen_salt(''bf'',10)),''Super Admin'',''admin'',''active'',''uz'',''{}\'') ON CONFLICT (email) DO NOTHING;"' "Yellow"
     Write-Color "  3. DB migrations must be applied (see docs/TESTING.md)" "Yellow"
 }
 
