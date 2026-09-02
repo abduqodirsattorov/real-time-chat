@@ -252,4 +252,40 @@ export class OperatorService {
       }
     }
   }
+
+  // ── GET /operator/kpi (Supervisor Dashboard) ──────────────────────────────────
+  async getKpi(user: JwtUser) {
+    if (!['supervisor', 'admin'].includes(user.role)) {
+      throw new ForbiddenException('Faqat supervisor yoki admin KPI ma\'lumotlarini ko\'ra oladi');
+    }
+
+    const [states, totalOperators] = await Promise.all([
+      this.prisma.operatorState.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.operatorState.count(),
+    ]);
+
+    const statusCounts: Record<string, number> = {};
+    for (const s of states) {
+      statusCounts[s.status] = s._count._all;
+    }
+
+    const activeOperators =
+      (statusCounts['online'] || 0) +
+      (statusCounts['busy'] || 0) +
+      (statusCounts['away'] || 0);
+
+    return {
+      totalOperators,
+      activeOperators,
+      online: statusCounts['online'] || 0,
+      busy: statusCounts['busy'] || 0,
+      away: statusCounts['away'] || 0,
+      break: statusCounts['break'] || 0,
+      offline: statusCounts['offline'] || 0,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

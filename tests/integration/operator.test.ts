@@ -223,4 +223,27 @@ describe('Operator — regression tests', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // ── Supervisor KPI endpoint (Wave 3) ────────────────────────────────────────
+
+  describe('GET /operator/kpi (supervisor)', () => {
+    it('admin gets 200 with stats object', async () => {
+      // Ensure at least one status entry exists
+      await adminHttp.post('/operator/status', { status: 'available' });
+
+      const res = await adminHttp.get('/operator/kpi');
+      expect(res.status).toBe(200);
+      expect(res.data).toHaveProperty('totalOperators');
+      expect(typeof res.data.totalOperators).toBe('number');
+      // API returns flat breakdown: online, offline, busy, break, away
+      expect(res.data).toHaveProperty('online');
+      expect(res.data).toHaveProperty('offline');
+      expect(res.data).toHaveProperty('timestamp');
+    });
+
+    it('unauthenticated request returns 401', async () => {
+      const res = await http.get('/operator/kpi');
+      expect(res.status).toBe(401);
+    });
+  });
 });

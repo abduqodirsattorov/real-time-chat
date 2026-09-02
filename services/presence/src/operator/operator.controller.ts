@@ -29,4 +29,9 @@ export class OperatorController {
   getTransferTargets(@CurrentUser() user: JwtUser, @Query() dto: TransferTargetsDto) {
     return this.operator.getTransferTargets(user, dto);
   }
+
+  @Get('kpi')
+  getKpi(@CurrentUser() user: JwtUser) {
+    return this.operator.getKpi(user);
+  }
 }

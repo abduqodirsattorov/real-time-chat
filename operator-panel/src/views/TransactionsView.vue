@@ -552,18 +552,43 @@ function toggleAll(e: Event) {
   selectedIds.value = new Set(selectedIds.value);
 }
 
-// ── Actions (stub) ────────────────────────────────────────────────────────────
-function onAction(act: string) {
+// ── Actions (Nova Real Integration) ──────────────────────────────────────────
+async function onAction(act: string) {
   showActionsMenu.value = false;
-  alert(`[STUB] ${act}\nTranzaksiya: ${selectedTx.value?.externalId ?? selectedId.value}\n\nNova API integratsiyasida bajariladi.`);
+  const extId = selectedTx.value?.externalId ?? selectedId.value;
+  if (!extId) {
+    alert('Tranzaksiya identifikatori topilmadi');
+    return;
+  }
+  try {
+    const res = await transactionsApi.executeAction(extId, act);
+    alert(`Amal muvaffaqiyatli bajarildi: ${act}\nTranzaksiya: ${extId}\nNatija: ${JSON.stringify(res.result || res)}`);
+    await load();
+  } catch (err: any) {
+    const msg = err?.response?.data?.message || err?.response?.data || err.message;
+    alert(`Amalni bajarishda xatolik: ${msg}`);
+  }
 }
 
-function onBulkAction(act: string) {
+async function onBulkAction(act: string) {
   showBulkMenu.value = false;
-  const scope = selectAllMode.value
-    ? `Barcha ${total.value} ta (barcha sahifalar)`
-    : `${selectedIds.value.size} ta (shu sahifa)`;
-  alert(`[STUB] Bulk: ${act}\nTanlangan: ${scope}\n\nNova API integratsiyasida bajariladi.`);
+  const ids = Array.from(selectedIds.value);
+  if (ids.length === 0) return;
+  const confirmed = confirm(`${ids.length} ta tranzaksiya ustida '${act}' amali bajarilsinmi?`);
+  if (!confirmed) return;
+
+  let successCount = 0;
+  for (const id of ids) {
+    const tx = items.value.find((t) => t.id === id);
+    const extId = tx?.externalId ?? id;
+    try {
+      await transactionsApi.executeAction(extId, act);
+      successCount++;
+    } catch {}
+  }
+  alert(`Ommaviy amal yakunlandi: ${successCount}/${ids.length} ta tranzaksiya muvaffaqiyatli bajarildi.`);
+  clearSelection();
+  await load();
 }
 
 function clearSelection() {

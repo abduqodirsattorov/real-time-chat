@@ -9,6 +9,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { NovaService } from './nova.service';
+import { AuditService } from '../common/audit/audit.service';
 import { CurrentUser, JwtUser, Public } from '../common/decorators/current-user.decorator';
 
 const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
@@ -16,7 +17,10 @@ const SUPERVISOR_ROLES = new Set(['supervisor', 'admin']);
 
 @Controller('nova')
 export class NovaController {
-  constructor(private readonly nova: NovaService) {}
+  constructor(
+    private readonly nova: NovaService,
+    private readonly audit: AuditService,
+  ) {}
 
   /** Health — no JWT required. Proxies to Nova/mock-nova. */
   @Get('health')
@@ -55,6 +59,7 @@ export class NovaController {
 
   /** Execute an action on Nova. Requires supervisor+ role. */
   @Post('test/action/:extId')
+  @Post('action/:extId')
   async testAction(
     @CurrentUser() user: JwtUser,
     @Param('extId') extId: string,
@@ -62,13 +67,30 @@ export class NovaController {
   ) {
     if (!SUPERVISOR_ROLES.has(user.role)) throw new ForbiddenException();
     try {
-      return await this.nova.executeAction(
+      const res = await this.nova.executeAction(
         extId,
         body.action,
         body.operatorId ?? user.sub,
         body.params,
       );
+
+      await this.audit.log({
+        actorId: user.sub,
+        action: `nova_action_${body.action}`,
+        targetType: 'transaction',
+        targetId: extId,
+        payload: { action: body.action, params: body.params, success: res.success },
+      });
+
+      return res;
     } catch (err: any) {
+      await this.audit.log({
+        actorId: user.sub,
+        action: `nova_action_${body.action}_failed`,
+        targetType: 'transaction',
+        targetId: extId,
+        payload: { action: body.action, params: body.params, error: err.message },
+      });
       const status = err?.response?.status ?? HttpStatus.BAD_GATEWAY;
       throw new HttpException(err?.response?.data ?? 'Nova error', status);
     }

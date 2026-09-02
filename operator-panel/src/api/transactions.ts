@@ -51,4 +51,16 @@ export const transactionsApi = {
   }): Promise<Transaction> {
     return api.post('/transactions/upsert', data).then((r) => r.data);
   },
+
+  getActions(extId: string): Promise<{ actions: Array<{ key: string; label: string; enabled: boolean; reason?: string }> }> {
+    return api.get(`/nova/test/actions/${extId}`).then((r) => r.data);
+  },
+
+  executeAction(
+    extId: string,
+    action: string,
+    params: Record<string, unknown> = {},
+  ): Promise<{ success: boolean; result: Record<string, unknown> }> {
+    return api.post(`/nova/test/action/${extId}`, { action, params }).then((r) => r.data);
+  },
 };
