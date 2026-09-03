@@ -46,3 +46,39 @@ Ushbu qoidalar har qanday dasturiy ta'minot (ayniqsa, fintech, real-time aloqa v
      - Ruxsatsiz kanalga token so'rash (Bypass attempt).
      - Noto'g'ri signaturalar, expired tokenlar va buzilgan UUID formatlari (Fuzzing).
   2. Barcha testlar toza qayta build qilingan muhitda (`docker compose build --no-cache` yoki CI container) o'tkazilgandagina ish "tayyor" deb e'lon qilinadi.
+
+---
+
+## 6. Strict Cross-Tenant Isolation (Har bir Endpointda Tenant Tekshiruvi) Qoidasi
+* **Muammo:** Xonada (`Room`) tenant tekshirilgan, lekin unga bog'liq profilda (`Customer`), tranzaksiyada (`Transaction`), teglarda (`Tags`) yoki sozlamalarda (`FieldConfigs`) tenant ruxsati tekshirilmasa, operator begona mahsulotning barcha mijoz ma'lumotlarini (PII) o'qiy oladi yoki o'zgartira oladi.
+* **Qat'iy Qoida:**
+  1. Har qanday resurs (Customer, Transaction, Tag, Config, Room) kontrolleri va servisida `assertProductAccess(prisma, user, productId)` markaziy tekshiruvi chaqirilishi shart.
+  2. `productId` hech qachon klient body'sidan so'zsiz qabul qilinmaydi; u resursning o'zidan yoki qat'iy tekshirilgan header/token'dan olinishi shart.
+
+---
+
+## 7. Full-Mesh Multi-Service Revocation (Butun Tizim Bo'yicha Hisob Bekor Qilishi) Qoidasi
+* **Muammo:** Foydalanuvchi bloklanganda yoki o'chirilganda, faqat `auth` yoki `chat` servisida token tekshirilib, qolgan mikrogvardiyalarda (`call`, `media`, `presence`, `recording`, `notification`, `bot`) eskirgan token ishlashda davom etsa, chetlatilgan xodim tizimga kirishda davom etadi.
+* **Qat'iy Qoida:**
+  1. Token bekor qilish (Revocation) va hisob holati (`status === 'active'`) tekshiruvi **barcha 100% mikrogvardiyalarning JWT guardlarida** (`AccountStatusGuard`) bir xil darajada tekshirilishi shart.
+  2. Redis revocation keshiga asossiz qisqa TTL (masalan 1 soat) qo'yish taqiqlanadi — bloklangan hisob butunlay bloklanganicha qolishi shart.
+
+---
+
+## 8. Consumer-Protocol Validation & Zero-Illusion Observability Qoidasi
+* **Muammo:** `/metrics` endpointi `200 OK` qaytargani bilan, agar Content-Type (masalan NestJS default `text/html`) monitoring tizimi (Prometheus) talab qiladigan standartga (`text/plain; version=0.0.4`) mos kelmasa, Prometheus targetlarni rad etadi va monitoring soxta bo'lib qoladi.
+* **Qat'iy Qoida:**
+  1. Har qanday protokol endpointi (Prometheus, Webhook, Health, SSO) faqat HTTP status bilan emas, **iste'molchi qabul qiladigan aniq Content-Type va Body formati** bilan tasdiqlanishi shart.
+  2. Barcha 100% targetlar Prometheus UI / Target statusida `UP (1/1)` holatiga kelishi tekshirilishi shart.
+
+---
+
+## 9. Zero-Silent-Pass & Mandatory Negative Testing Matrix Qoidasi
+* **Muammo:** Test fayllarida `if (!token) return;` kabi kodlar bo'lsa, test token ololmaganida hech narsani tekshirmasdan yashil o'tib ketadi va xavfsizlik bor degan yolg'on ishonch uyg'otadi. Shuningdek, faqat "Happy Path" testlanadi.
+* **Qat'iy Qoida:**
+  1. Test to'plamlarida xatoni yashiruvchi shartli qaytishlar (`if (!token) return`) qat'iyan man etiladi; setup xatosi butun testni fail qilishi shart.
+  2. Har bir yangi imkoniyat uchun **Salbiy Matritsa (Negative Matrix)** yozilishi shart:
+     - 4 ta rol (customer, operator, supervisor, admin) uchun ruxsatsiz urinishlar (`403 Forbidden`).
+     - Begona mahsulot / tenant resursini o'qish/yozish urinishlari (`403 / 404`).
+     - Bloklangan/o'chirilgan akkauntning barcha servislarga kirish urinishlari (`401 Unauthorized`).
+     - Fuzzing: buzilgan UUID, SQLi, path traversal, noto'g'ri signaturalar (`400 / 401`, hech qachon `500` emas).
