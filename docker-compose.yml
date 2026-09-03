@@ -114,6 +114,7 @@ services:
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-nova_dev_master_key}
       MEILI_ENV: development
+      MEILI_EXPERIMENTAL_ENABLE_METRICS: "true"
     volumes:
       - meili_data:/meili_data
     ports:
@@ -485,6 +486,30 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ─── Metrika exporterlari (Prometheus uchun) ─────────────────────────────────
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}?sslmode=disable
+    networks:
+      - nova-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks:
+      - nova-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ─── Mock Nova (Nova API simulator — integratsiya uchun) ─────────────────────
 
   mock-nova:
@@ -534,6 +559,9 @@ services:
       - --entrypoints.websecure.address=:443
       - --log.level=INFO
       - --accesslog=true
+      - --metrics.prometheus=true
+      - --metrics.prometheus.addEntryPointsLabels=true
+      - --metrics.prometheus.addServicesLabels=true
     ports:
       - "80:80"
       - "443:443"
@@ -555,6 +583,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts:/etc/prometheus/alerts:ro
       - prom_data:/prometheus
     ports:
       - "127.0.0.1:9091:9090"

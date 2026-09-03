@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, NestModule, Controller, Get } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule, Controller, Get, Header } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -15,6 +15,7 @@ class HealthController {
   @Get('readyz')
   ready() { return { status: 'ready' }; }
 
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
   @Get('metrics')
   metrics() {
     const mem = process.memoryUsage();

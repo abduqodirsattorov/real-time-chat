@@ -26,6 +26,13 @@ enum UserStatus {
   @@map("user_status")
 }
 
+enum DevicePlatform {
+  ios
+  android
+  web
+  @@map("device_platform")
+}
+
 enum UserLocale {
   uz
   ru
@@ -497,19 +504,20 @@ model Recording {
 // ── Device ────────────────────────────────────────────────────────────────────
 
 model Device {
-  id         String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  userId     String      @map("user_id") @db.Uuid
-  platform   String      @db.VarChar(32)
-  pushToken  String      @map("push_token")
-  voipToken  String?     @map("voip_token")
-  deviceName String?     @map("device_name") @db.VarChar(255)
-  appVersion String?     @map("app_version") @db.VarChar(32)
+  id         String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  platform   DevicePlatform
+  pushToken  String         @map("push_token")
+  voipToken  String?        @map("voip_token")
+  deviceName String?        @map("device_name") @db.VarChar(255)
+  appVersion String?        @map("app_version") @db.VarChar(32)
   locale     UserLocale?
-  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt  DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  lastSeen   DateTime       @default(now()) @map("last_seen") @db.Timestamptz()
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz()
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, pushToken])
   @@index([userId])
   @@map("devices")
 }

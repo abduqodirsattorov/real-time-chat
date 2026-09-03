@@ -5,7 +5,7 @@ global:
     project: nova-chat
 
 rule_files:
-  # - "alerts/*.yml"
+  - "alerts/*.yml"
 
 scrape_configs:
   # ── Prometheus o'zi ───────────────────────────────────────────────────────────
@@ -58,23 +58,26 @@ scrape_configs:
   # ── Infrastructure ────────────────────────────────────────────────────────────
   - job_name: postgres
     static_configs:
-      - targets: ["postgres:5432"]
-    # postgres_exporter keyingi versiyada qo'shiladi
+      - targets: ["postgres-exporter:9187"]
 
   - job_name: redis
     static_configs:
-      - targets: ["redis:6379"]
-    # redis_exporter keyingi versiyada qo'shiladi
+      - targets: ["redis-exporter:9121"]
 
   - job_name: rabbitmq
     static_configs:
-      - targets: ["rabbitmq:15672"]
+      - targets: ["rabbitmq:15692"]
     metrics_path: /metrics
 
   - job_name: meilisearch
     static_configs:
       - targets: ["meilisearch:7700"]
     metrics_path: /metrics
+    # Dev qiymati .env dagi MEILI_MASTER_KEY bilan mos. Productionda
+    # credentials_file orqali secret fayldan o'qilishi kerak.
+    authorization:
+      type: Bearer
+      credentials: nova_dev_master_key
 
   # ── Traefik ───────────────────────────────────────────────────────────────────
   - job_name: traefik

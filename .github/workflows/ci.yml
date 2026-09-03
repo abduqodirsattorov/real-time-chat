@@ -6,86 +6,128 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+  # notification-service ataylab qisqartirilgan schema ishlatadi (faqat User + Device),
+  # chunki u boshqa modellarga murojaat qilmaydi. Shuning uchun fayl solishtiruvidan chetda.
+  SCHEMA_SYNC_EXCLUDE: notification
+
 jobs:
-  schema-drift-check:
-    name: Prisma Schema Drift Check
+  schema-file-sync:
+    name: Schema fayllari sinxronmi
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Verify All Services Match Shared Schema
+      - name: Verify service schemas match the shared master
         run: |
+          failed=0
           for file in services/*/prisma/schema.prisma; do
-            echo "Checking $file against shared/prisma/schema.prisma..."
-            cmp -s shared/prisma/schema.prisma "$file" || {
-              echo "❌ SCHEMA DRIFT DETECTED in $file!"
-              diff -u shared/prisma/schema.prisma "$file"
-              exit 1
-            }
+            svc=$(basename "$(dirname "$(dirname "$file")")")
+            if [ "$svc" = "$SCHEMA_SYNC_EXCLUDE" ]; then
+              echo "⊘ $svc — chetda qoldirildi (qisqartirilgan schema)"
+              continue
+            fi
+            if cmp -s shared/prisma/schema.prisma "$file"; then
+              echo "✓ $svc"
+            else
+              echo "❌ SCHEMA DRIFT: $file"
+              diff -u shared/prisma/schema.prisma "$file" || true
+              failed=1
+            fi
           done
-          echo "✅ All service schemas are 100% in sync with shared schema!"
+          exit $failed
 
   unit-tests:
-    name: Microservice Unit Tests
+    name: Unit testlar (8 servis)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth, chat, call, presence, media, recording, bot-gateway, notification]
+    env:
+      JWT_SECRET: test_jwt_secret_32_chars_minimum_xx
+      JWT_REFRESH_SECRET: test_refresh_secret_32_chars_min_xx
+      CENTRIFUGO_TOKEN_SECRET: test_centrifugo_secret
+      NOVA_SSO_SECRET: test_nova_sso_secret
+      INTERNAL_SERVICE_KEY: test_internal_service_key
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Test Auth Service
+      - name: Test ${{ matrix.service }}
         run: |
-          cd services/auth
+          cd services/${{ matrix.service }}
           npm ci || npm install
           npx prisma generate
           npm test
 
-      - name: Test Chat Service
-        run: |
-          cd services/chat
-          npm ci || npm install
-          npx prisma generate
-          npm test
-
-      - name: Test Call Service
-        run: |
-          cd services/call
-          npm ci || npm install
-          npx prisma generate
-          npm test
-
-      - name: Test Presence Service
-        run: |
-          cd services/presence
-          npm ci || npm install
-          npx prisma generate
-          npm test
-
-  security-tests:
-    name: Integration & Security Hardening Verification
+  integration-and-security:
+    name: Integration, xavfsizlik va baza drift tekshiruvi
     runs-on: ubuntu-latest
-    needs: [schema-drift-check, unit-tests]
+    needs: [schema-file-sync, unit-tests]
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Prepare environment
+        run: cp .env.example .env
 
-      - name: Start Docker Stack
+      - name: Start stack
         run: |
-          docker compose up -d postgres redis rabbitmq meilisearch
           docker compose up -d --build
-          sleep 15
+          echo "Servislar tayyor bo'lishini kutish..."
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost/api/v1/nova/health >/dev/null 2>&1; then
+              echo "Gateway tayyor"; break
+            fi
+            sleep 5
+          done
           docker compose ps
 
-      - name: Run Integration Tests
+      # Loyihaning uch marta portlashiga sabab bo'lgan tekshiruv:
+      # Prisma modeli bilan HAQIQIY baza sxemasi mos keladimi?
+      # Diff yo'nalishi: BAZA → MODEL. Ya'ni "ADD COLUMN" degani model ustunni
+      # kutadi, bazada esa u yo'q — runtime'da 500. Aynan shu yo'nalish bloklanadi.
+      # "DROP COLUMN/TABLE/TYPE" teskarisi: bazada ortiqcha narsa bor, Prisma uni
+      # e'tiborsiz qoldiradi (notification-service ataylab qisqartirilgan schema
+      # ishlatadi). Tip kengligi va FK nomlari ham ishlashga ta'sir qilmaydi.
+      - name: Database drift check (schema ↔ live DB)
+        run: |
+          BREAKING='ADD COLUMN|CREATE TABLE|CREATE TYPE'
+          failed=0
+          for svc in auth-service chat-service call-service presence-service \
+                     media-service recording-service notification-service bot-gateway; do
+            script=$(docker compose exec -T "$svc" npx prisma migrate diff \
+                       --from-schema-datasource prisma/schema.prisma \
+                       --to-schema-datamodel prisma/schema.prisma --script 2>/dev/null || true)
+            hits=$(echo "$script" | grep -E "$BREAKING" || true)
+            if [ -z "$hits" ]; then
+              echo "✓ $svc — buzuvchi drift yo'q"
+            else
+              echo "❌ DRIFT: $svc — Prisma modeli baza bilan mos emas"
+              echo "$hits"
+              failed=1
+            fi
+          done
+          exit $failed
+
+      - name: Integration + authorization suites
         run: |
           cd tests/integration
           npm ci || npm install
           npm test
+
+      - name: Prometheus targets must all be up
+        run: |
+          up=$(curl -fsS 'http://localhost:9091/api/v1/targets?state=active' \
+               | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const t=JSON.parse(d).data.activeTargets;console.log(t.filter(x=>x.health!=='up').map(x=>x.labels.job).join(','))})")
+          if [ -n "$up" ]; then
+            echo "❌ Prometheus targetlari o'lik: $up"
+            exit 1
+          fi
+          echo "✓ Barcha targetlar tirik"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { Public } from '../common/decorators/current-user.decorator';
@@ -27,6 +27,7 @@ export class HealthController {
   }
 
   @Public()
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
   @Get('metrics')
   metrics() {
     const mem = process.memoryUsage();

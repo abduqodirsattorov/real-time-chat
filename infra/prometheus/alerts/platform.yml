@@ -1,0 +1,79 @@
+groups:
+  - name: nova-platform
+    interval: 30s
+    rules:
+      # ── Servis mavjudligi ───────────────────────────────────────────────────
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} javob bermayapti"
+          description: "Prometheus {{ $labels.job }} ({{ $labels.instance }}) ni 2 daqiqadan beri o'qiy olmayapti."
+
+      # ── Xotira o'sishi (sizish belgisi) ─────────────────────────────────────
+      - alert: HighResidentMemory
+        expr: process_resident_memory_bytes > 1.5e9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} xotirasi 1.5 GB dan oshdi"
+          description: "10 daqiqadan beri yuqori xotira — sizish bo'lishi mumkin."
+
+      # ── Servis qayta ishga tushib turibdi ───────────────────────────────────
+      - alert: ServiceRestartLoop
+        expr: process_uptime_seconds < 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} tez-tez qayta ishga tushyapti"
+          description: "Uptime 5 daqiqa davomida 2 daqiqadan past — restart loop."
+
+  - name: nova-infra
+    interval: 30s
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL javob bermayapti"
+
+      - alert: PostgresConnectionsHigh
+        expr: sum(pg_stat_activity_count) > 150
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL ulanishlari 150 dan oshdi"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis javob bermayapti"
+
+      - alert: RabbitQueueBacklog
+        expr: rabbitmq_queue_messages_ready > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.queue }} navbatida 5000 dan ortiq xabar to'planib qoldi"
+
+      - alert: TraefikHighErrorRate
+        expr: |
+          sum(rate(traefik_service_requests_total{code=~"5.."}[5m]))
+            / clamp_min(sum(rate(traefik_service_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "5xx xatolar ulushi 5% dan yuqori"
+          description: "So'nggi 5 daqiqada gateway orqali o'tgan so'rovlarning 5% dan ortig'i server xatosi bilan tugadi."

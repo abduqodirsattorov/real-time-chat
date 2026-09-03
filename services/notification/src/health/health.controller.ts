@@ -1,10 +1,11 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 
 @Controller()
 export class HealthController {
   @Get('healthz')
   healthz() { return { status: 'ok', service: 'notification-service' }; }
 
+  @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
   @Get('metrics')
   metrics() {
     const mem = process.memoryUsage();
