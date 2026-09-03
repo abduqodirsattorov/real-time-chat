@@ -272,16 +272,21 @@ export class OperatorService {
       statusCounts[s.status] = s._count._all;
     }
 
+    // Diqqat: enum qiymatlari — available/busy/away/on_call/in_transfer/break/offline.
+    // 'online' degan holat mavjud emas.
     const activeOperators =
-      (statusCounts['online'] || 0) +
+      (statusCounts['available'] || 0) +
       (statusCounts['busy'] || 0) +
-      (statusCounts['away'] || 0);
+      (statusCounts['on_call'] || 0) +
+      (statusCounts['in_transfer'] || 0);
 
     return {
       totalOperators,
       activeOperators,
-      online: statusCounts['online'] || 0,
+      available: statusCounts['available'] || 0,
       busy: statusCounts['busy'] || 0,
+      onCall: statusCounts['on_call'] || 0,
+      inTransfer: statusCounts['in_transfer'] || 0,
       away: statusCounts['away'] || 0,
       break: statusCounts['break'] || 0,
       offline: statusCounts['offline'] || 0,

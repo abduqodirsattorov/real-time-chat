@@ -9,15 +9,13 @@ describe('Security & Authorization Audit Tests', () => {
   let operatorToken: string;
   let customerToken: string;
 
+  // Token olinmasa testlar JIMGINA o'tib ketmasligi kerak — setup xatosi
+  // butun to'plamni yiqitadi, chunki tokensiz hech qanday tekshiruv haqiqiy emas.
   beforeAll(async () => {
-    try {
-      adminToken = await getAdminToken();
-      operatorToken = adminToken;
-      customerToken = await getOtpToken(CUSTOMER_PHONE);
-    } catch (err) {
-      console.warn('Token setup warning:', err);
-    }
-  }, 30000);
+    adminToken = await getAdminToken();
+    operatorToken = adminToken;
+    customerToken = await getOtpToken(CUSTOMER_PHONE);
+  }, 40000);
 
   describe('1. Centrifugo Proxy Subscription Authorization', () => {
     it('should deny unauthorized room subscription via webhook', async () => {
@@ -74,7 +72,6 @@ describe('Security & Authorization Audit Tests', () => {
 
   describe('1b. Centrifugo Subscription Token Authorization (POST /auth/centrifugo/subscribe)', () => {
     it('should reject subscription token for unauthorized room', async () => {
-      if (!customerToken) return;
       try {
         await axios.post(
           `${API}/auth/centrifugo/subscribe`,
@@ -88,7 +85,6 @@ describe('Security & Authorization Audit Tests', () => {
     });
 
     it('should reject subscription token with invalid UUID format (400 Bad Request)', async () => {
-      if (!customerToken) return;
       try {
         await axios.post(
           `${API}/auth/centrifugo/subscribe`,
@@ -102,7 +98,6 @@ describe('Security & Authorization Audit Tests', () => {
     });
 
     it('should reject subscription token for presence:operators for customer (403 Forbidden)', async () => {
-      if (!customerToken) return;
       try {
         await axios.post(
           `${API}/auth/centrifugo/subscribe`,
@@ -135,7 +130,6 @@ describe('Security & Authorization Audit Tests', () => {
 
   describe('3. Operator Product Switching Authorization', () => {
     it('should reject switching to an unauthorized product', async () => {
-      if (!operatorToken) return;
       try {
         await axios.patch(
           `${API}/operator/product`,
@@ -151,7 +145,6 @@ describe('Security & Authorization Audit Tests', () => {
 
   describe('4. LiveKit Token & Call Endpoint Authorization', () => {
     it('should reject call queue access for non-staff', async () => {
-      if (!customerToken) return;
       try {
         await axios.get(`${API}/calls/queue`, {
           headers: { Authorization: `Bearer ${customerToken}` },
@@ -170,32 +163,25 @@ describe('Security & Authorization Audit Tests', () => {
     beforeAll(async () => {
       const email = `supervisor-${Date.now()}@pusher.uz`;
       const pass = 'SupervisorPass123!';
-      try {
-        const createRes = await axios.post(
-          `${API}/admin/users`,
-          {
-            email,
-            password: pass,
-            firstName: 'Audit',
-            lastName: 'Supervisor',
-            role: 'supervisor',
-            productIds: [],
-          },
-          { headers: { Authorization: `Bearer ${adminToken}` } },
-        );
-        supervisorUserId = createRes.data.id;
-        const loginRes = await axios.post(`${API}/auth/email-login`, {
+      const createRes = await axios.post(
+        `${API}/admin/users`,
+        {
           email,
           password: pass,
-        });
-        supervisorToken = loginRes.data.accessToken;
-      } catch (err: any) {
-        console.warn('Supervisor setup failed in security test:', err?.response?.data || err.message);
-      }
-    });
+          firstName: 'Audit',
+          lastName: 'Supervisor',
+          role: 'supervisor',
+          productIds: [],
+        },
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      );
+      supervisorUserId = createRes.data.id;
+      const loginRes = await axios.post(`${API}/auth/email-login`, { email, password: pass });
+      supervisorToken = loginRes.data.accessToken;
+      expect(supervisorToken).toBeTruthy();
+    }, 30000);
 
     it('should reject supervisor trying to create new users (403 Forbidden)', async () => {
-      if (!supervisorToken) return;
       try {
         await axios.post(
           `${API}/admin/users`,
@@ -215,7 +201,6 @@ describe('Security & Authorization Audit Tests', () => {
     });
 
     it('should reject supervisor trying to change passwords (403 Forbidden)', async () => {
-      if (!supervisorToken) return;
       try {
         await axios.patch(
           `${API}/admin/users/${supervisorUserId}/password`,
@@ -229,7 +214,6 @@ describe('Security & Authorization Audit Tests', () => {
     });
 
     it('should reject supervisor trying to delete users (403 Forbidden)', async () => {
-      if (!supervisorToken) return;
       try {
         await axios.delete(
           `${API}/admin/users/${supervisorUserId}`,

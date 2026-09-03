@@ -235,10 +235,16 @@ describe('Operator — regression tests', () => {
       expect(res.status).toBe(200);
       expect(res.data).toHaveProperty('totalOperators');
       expect(typeof res.data.totalOperators).toBe('number');
-      // API returns flat breakdown: online, offline, busy, break, away
-      expect(res.data).toHaveProperty('online');
-      expect(res.data).toHaveProperty('offline');
+      // Taqsimot operator_status enum qiymatlariga mos bo'lishi shart —
+      // 'online' degan holat mavjud emas, 'available' bor.
+      for (const key of ['available', 'busy', 'onCall', 'inTransfer', 'away', 'break', 'offline']) {
+        expect(res.data).toHaveProperty(key);
+      }
       expect(res.data).toHaveProperty('timestamp');
+
+      // Endi 'available' operator qo'yganimizdan keyin hisob nolga teng bo'lmasligi kerak
+      expect(res.data.available).toBeGreaterThan(0);
+      expect(res.data.activeOperators).toBeGreaterThan(0);
     });
 
     it('unauthenticated request returns 401', async () => {

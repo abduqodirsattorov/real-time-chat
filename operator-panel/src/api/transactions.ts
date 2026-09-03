@@ -61,6 +61,6 @@ export const transactionsApi = {
     action: string,
     params: Record<string, unknown> = {},
   ): Promise<{ success: boolean; result: Record<string, unknown> }> {
-    return api.post(`/nova/test/action/${extId}`, { action, params }).then((r) => r.data);
+    return api.post(`/nova/action/${extId}`, { action, params }).then((r) => r.data);
   },
 };

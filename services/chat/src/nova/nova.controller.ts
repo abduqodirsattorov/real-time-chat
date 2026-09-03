@@ -58,9 +58,8 @@ export class NovaController {
   }
 
   /** Execute an action on Nova. Requires supervisor+ role. */
-  @Post('test/action/:extId')
   @Post('action/:extId')
-  async testAction(
+  async executeAction(
     @CurrentUser() user: JwtUser,
     @Param('extId') extId: string,
     @Body() body: { action: string; operatorId?: string; params?: object },

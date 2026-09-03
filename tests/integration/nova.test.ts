@@ -301,9 +301,9 @@ describe('Nova via chat-service (port 80)', () => {
 
   // ── Action execute proxy ──────────────────────────────────────────────────
 
-  describe('POST /api/v1/nova/test/action/:extId', () => {
+  describe('POST /api/v1/nova/action/:extId', () => {
     it('executes action via chat-service (admin role)', async () => {
-      const res = await http.post('/nova/test/action/TX-MOCK-002', {
+      const res = await http.post('/nova/action/TX-MOCK-002', {
         action: 'recredit_p2p',
         params: {},
       });
@@ -319,7 +319,7 @@ describe('Nova via chat-service (port 80)', () => {
       const uniqueExtId = `TX-AUDIT-${Date.now()}`;
 
       // Execute action via chat-service
-      const actionRes = await http.post(`/nova/test/action/${uniqueExtId}`, {
+      const actionRes = await http.post(`/nova/action/${uniqueExtId}`, {
         action: 'export_csv',
         params: {},
       });

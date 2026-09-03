@@ -39,29 +39,56 @@ export async function getAdminToken(): Promise<string> {
 export async function getOtpToken(phone: string): Promise<string> {
   const http = axios.create({ baseURL: BASE, validateStatus: () => true });
 
-  // 1. Trigger OTP (if daily limit hit in test env, clear counter)
+  // Test muhitida OTP limitlarini tozalash. Kalit nomlari auth-service bilan
+  // bir xil bo'lishi shart: auth:otp:min:<phone> va auth:otp:day:<phone>:<sana>.
+  const clearOtpLimits = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const key of [`auth:otp:min:${phone}`, `auth:otp:day:${phone}:${today}`]) {
+      try {
+        execSync(`docker compose exec -T redis redis-cli del "${key}"`, {
+          cwd: PROJECT_DIR, timeout: 5000, stdio: 'ignore',
+        });
+      } catch {}
+    }
+  };
+
+  // 1. Trigger OTP
+  clearOtpLimits();
   let sendRes = await http.post('/auth/login', { phone });
-  if (sendRes.status === 400 && JSON.stringify(sendRes.data).includes('Kunlik OTP limiti')) {
-    try {
-      execSync(`docker compose exec -T redis redis-cli del "auth:daily_otp:${phone}"`, { cwd: PROJECT_DIR, timeout: 5000 });
-      sendRes = await http.post('/auth/login', { phone });
-    } catch {}
+  if (sendRes.status === 400) {
+    clearOtpLimits();
+    sendRes = await http.post('/auth/login', { phone });
   }
   if (sendRes.status !== 200 && !JSON.stringify(sendRes.data).includes('Bir daqiqada faqat 1 ta OTP')) {
     throw new Error(`OTP send failed ${sendRes.status}: ${JSON.stringify(sendRes.data)}`);
   }
 
   // 2. Read OTP from Redis
-  let otp: string;
-  try {
-    otp = execSync(
-      `docker compose exec -T redis redis-cli get "auth:otp:${phone}"`,
-      { cwd: PROJECT_DIR, timeout: 10000 },
-    )
-      .toString()
-      .trim();
-  } catch (e: any) {
-    throw new Error(`Redis OTP read failed: ${e.message}`);
+  const readOtp = (): string => {
+    try {
+      return execSync(
+        `docker compose exec -T redis redis-cli get "auth:otp:${phone}"`,
+        { cwd: PROJECT_DIR, timeout: 10000 },
+      )
+        .toString()
+        .trim();
+    } catch (e: any) {
+      throw new Error(`Redis OTP read failed: ${e.message}`);
+    }
+  };
+
+  let otp = readOtp();
+
+  // Oldingi OTP iste'mol qilingan bo'lsa Redis bo'sh qoladi va "1 daqiqada 1 ta"
+  // limiti yangi OTP berishga to'sqinlik qiladi. Test muhitida limitni tozalab
+  // qayta so'raymiz — aks holda testlar jimgina o'tib ketadi.
+  if (!otp || !/^\d{6}$/.test(otp)) {
+    clearOtpLimits();
+    const retry = await http.post('/auth/login', { phone });
+    if (retry.status !== 200 && retry.status !== 201) {
+      throw new Error(`OTP resend failed ${retry.status}: ${JSON.stringify(retry.data)}`);
+    }
+    otp = readOtp();
   }
 
   if (!otp || !/^\d{6}$/.test(otp)) {
