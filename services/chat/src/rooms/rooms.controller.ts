@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Param, Body,
-  Query, UseGuards, HttpCode, HttpStatus, Headers,
+  Query, UseGuards, HttpCode, HttpStatus, Headers, ParseUUIDPipe,
 } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
 import { TagsService } from '../tags/tags.service';
@@ -47,18 +47,18 @@ export class RoomsController {
   }
 
   @Get(':id')
-  getOne(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+  getOne(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.rooms.getOne(user, id);
   }
 
   @Patch(':id')
-  update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateRoomDto) {
+  update(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRoomDto) {
     return this.rooms.update(user, id, dto);
   }
 
   @Post(':id/close')
   @HttpCode(HttpStatus.OK)
-  close(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+  close(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.rooms.close(user, id);
   }
 
@@ -66,7 +66,7 @@ export class RoomsController {
   @HttpCode(HttpStatus.OK)
   setTags(
     @CurrentUser() user: JwtUser,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetRoomTagsDto,
     @Headers('x-product-id') productId?: string,
   ) {

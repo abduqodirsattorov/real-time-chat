@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtUser } from '../common/decorators/current-user.decorator';
+import { assertProductAccess } from '../common/product-access';
 import { CreateTagDto, UpdateTagDto } from './dto/tags.dto';
 
 @Injectable()
@@ -11,7 +12,8 @@ export class TagsService {
 
   // ── List tags for a product ────────────────────────────────────────────────
 
-  async list(productId: string) {
+  async list(user: JwtUser, productId: string) {
+    await assertProductAccess(this.prisma, user, productId);
     return this.prisma.tag.findMany({
       where: { productId },
       orderBy: { name: 'asc' },
@@ -22,6 +24,7 @@ export class TagsService {
 
   async create(user: JwtUser, productId: string, dto: CreateTagDto) {
     this.assertAdmin(user);
+    await assertProductAccess(this.prisma, user, productId);
 
     const existing = await this.prisma.tag.findUnique({
       where: { productId_name: { productId, name: dto.name } },
@@ -41,6 +44,7 @@ export class TagsService {
 
   async update(user: JwtUser, id: string, productId: string, dto: UpdateTagDto) {
     this.assertAdmin(user);
+    await assertProductAccess(this.prisma, user, productId);
     const tag = await this.findOwned(id, productId);
 
     if (dto.name && dto.name !== tag.name) {
@@ -63,6 +67,7 @@ export class TagsService {
 
   async remove(user: JwtUser, id: string, productId: string) {
     this.assertAdmin(user);
+    await assertProductAccess(this.prisma, user, productId);
     await this.findOwned(id, productId);
 
     // Remove from all rooms before deleting
@@ -83,6 +88,9 @@ export class TagsService {
 
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException('Xona topilmadi');
+
+    // Xona qaysi mahsulotga tegishli bo'lsa, o'shanga ruxsat kerak
+    await assertProductAccess(this.prisma, user, room.productId);
 
     // Product isolation: tags must belong to operator's product
     if (tagIds.length > 0 && productId) {

@@ -6,6 +6,7 @@ import { UpsertTransactionDto, ListTransactionsQuery } from './dto/transactions.
 import { Prisma } from '@prisma/client';
 
 const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
+import { assertProductAccess } from '../common/product-access';
 
 @Injectable()
 export class TransactionsService {
@@ -16,7 +17,7 @@ export class TransactionsService {
 
   // ── LIST ─────────────────────────────────────────────────────────────────
   async list(user: JwtUser, productId: string, q: ListTransactionsQuery) {
-    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
+    await assertProductAccess(this.prisma, user, productId);
 
     const limit = Math.min(q.limit ?? 20, 100);
     const offset = q.offset ?? 0;
@@ -110,7 +111,7 @@ export class TransactionsService {
 
   // ── GET ONE ───────────────────────────────────────────────────────────────
   async getOne(user: JwtUser, productId: string, id: string) {
-    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
+    await assertProductAccess(this.prisma, user, productId);
     const [rows] = await this.prisma.$queryRawUnsafe<any[]>(
       `SELECT t.id,
               t.product_id   AS "productId",
@@ -138,7 +139,7 @@ export class TransactionsService {
 
   // ── UPSERT ────────────────────────────────────────────────────────────────
   async upsert(user: JwtUser, dto: UpsertTransactionDto) {
-    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
+    await assertProductAccess(this.prisma, user, dto.productId);
     const tx = await this.prisma.transaction.upsert({
       where: { productId_externalId: { productId: dto.productId, externalId: dto.externalId } },
       create: {

@@ -2,6 +2,8 @@ import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/com
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { RedisService } from '../../redis/redis.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { assertAccountActive } from './account-status';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 
@@ -10,6 +12,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(
     private reflector: Reflector,
     private redis: RedisService,
+    private prisma: PrismaService,
   ) {
     super();
   }
@@ -27,10 +30,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const req = context.switchToHttp().getRequest();
     const user = req.user;
     if (user?.sub) {
+      // Tezkor yo'l: Redis'dagi bekor qilish belgisi
       const revoked = await this.redis.get(`auth:revoked:${user.sub}`);
       if (revoked) {
         throw new UnauthorizedException('Akkaunt bloklangan yoki sessiya bekor qilingan');
       }
+      // Haqiqat manbai: bazadagi hisob holati (Redis kaliti yo'qolsa ham ishlaydi)
+      await assertAccountActive(this.prisma, user.sub);
     }
 
     return true;

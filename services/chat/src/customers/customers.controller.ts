@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, Headers, UseGuards } from '@nestjs/common';
+import {
+  Controller, Get, Post, Patch, Param, Body, Query, Headers, UseGuards, ParseUUIDPipe,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { CustomersService } from './customers.service';
@@ -10,14 +13,14 @@ export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Get('by-room/:roomId')
-  getByRoom(@CurrentUser() user: JwtUser, @Param('roomId') roomId: string) {
+  getByRoom(@CurrentUser() user: JwtUser, @Param('roomId', ParseUUIDPipe) roomId: string) {
     return this.customers.getByRoom(user, roomId);
   }
 
   @Get(':id/history')
   getHistory(
     @CurrentUser() user: JwtUser,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Headers('x-product-id') productId: string,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
@@ -29,8 +32,14 @@ export class CustomersController {
   getByUid(
     @CurrentUser() user: JwtUser,
     @Param('uid') uid: string,
-    @Query('productId') productId: string,
+    @Headers('x-product-id') headerProductId: string,
+    @Query('productId') queryProductId?: string,
   ) {
+    // Mahsulot header'dan olinadi; query faqat eski klientlar uchun zaxira.
+    const productId = headerProductId ?? queryProductId;
+    if (!productId) {
+      throw new BadRequestException('X-Product-Id header talab qilinadi');
+    }
     return this.customers.getByUid(user, productId, uid);
   }
 
@@ -40,7 +49,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateCustomerDto) {
+  update(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCustomerDto) {
     return this.customers.update(user, id, dto);
   }
 }

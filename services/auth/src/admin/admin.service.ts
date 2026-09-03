@@ -127,7 +127,7 @@ export class AdminService {
     if (dto.status !== undefined) {
       updates.status = dto.status as UserStatus;
       if (dto.status === 'suspended' || dto.status === 'deleted') {
-        await this.redis.set(K.revoked(id), dto.status, 3600);
+        await this.redis.set(K.revoked(id), dto.status);
         const sessions = await this.redis.smembers(K.sessions(id));
         for (const s of sessions) await this.redis.del(K.refresh(s));
         await this.redis.del(K.sessions(id));
@@ -187,7 +187,7 @@ export class AdminService {
     await this.prisma.user.update({ where: { id }, data: { status: 'deleted' } });
 
     // Instantly invalidate access tokens across services
-    await this.redis.set(K.revoked(id), 'deleted', 3600);
+    await this.redis.set(K.revoked(id), 'deleted');
 
     // Delete all refresh sessions
     const sessions = await this.redis.smembers(K.sessions(id));

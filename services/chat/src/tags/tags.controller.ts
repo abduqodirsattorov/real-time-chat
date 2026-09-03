@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Param, Body, Headers, UseGuards, HttpCode, HttpStatus,
+  Param, Body, Headers, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
 } from '@nestjs/common';
 import { TagsService } from './tags.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -14,8 +14,8 @@ export class TagsController {
 
   /** GET /tags — list all tags for current product */
   @Get()
-  list(@Headers('x-product-id') productId: string) {
-    return this.tags.list(productId ?? '');
+  list(@CurrentUser() user: JwtUser, @Headers('x-product-id') productId: string) {
+    return this.tags.list(user, productId ?? '');
   }
 
   /** POST /tags — admin creates tag */
@@ -33,7 +33,7 @@ export class TagsController {
   update(
     @CurrentUser() user: JwtUser,
     @Headers('x-product-id') productId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTagDto,
   ) {
     return this.tags.update(user, id, productId, dto);
@@ -45,7 +45,7 @@ export class TagsController {
   remove(
     @CurrentUser() user: JwtUser,
     @Headers('x-product-id') productId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.tags.remove(user, id, productId);
   }

@@ -35,6 +35,7 @@ const K = {
   otpDay: (phone: string, d: string) => `auth:otp:day:${phone}:${d}`,
   refresh: (jti: string) => `auth:refresh:${jti}`,
   sessions: (uid: string) => `auth:sessions:${uid}`,
+  revoked: (uid: string) => `auth:revoked:${uid}`,
 };
 
 @Injectable()
@@ -105,7 +106,7 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
     if (!user) throw new NotFoundException('Foydalanuvchi topilmadi. Avval /auth/register ga murojaat qiling.');
-    if (user.status === 'suspended') throw new ForbiddenException('Hisobingiz bloklangan');
+    if (user.status !== 'active') throw new ForbiddenException('Hisobingiz faol emas');
 
     this.logger.log({ event: 'otp_verified', userId: user.id });
     return this.issueTokens(user.id, user.role, user.locale);
@@ -116,7 +117,7 @@ export class AuthService {
   async login(phone: string) {
     const user = await this.prisma.user.findUnique({ where: { phone } });
     if (!user) throw new NotFoundException('Foydalanuvchi topilmadi');
-    if (user.status === 'suspended') throw new ForbiddenException('Hisobingiz bloklangan');
+    if (user.status !== 'active') throw new ForbiddenException('Hisobingiz faol emas');
 
     return this.otpSend(phone);
   }
@@ -140,7 +141,7 @@ export class AuthService {
       if (attempts === 1) await this.redis.expire(failedKey, 900);
       throw new UnauthorizedException('Email yoki parol noto\'g\'ri');
     }
-    if (user.status === 'suspended') throw new ForbiddenException('Hisobingiz bloklangan');
+    if (user.status !== 'active') throw new ForbiddenException('Hisobingiz faol emas');
     if (user.role === 'customer') throw new ForbiddenException('Bu kirish turi faqat operator va adminlar uchun');
 
     const valid = await bcrypt.compare(password, user.passwordHash);
@@ -262,7 +263,7 @@ export class AuthService {
       select: { id: true, role: true, status: true },
     });
 
-    if (!user || user.status === 'suspended') {
+    if (!user || user.status !== 'active') {
       throw new UnauthorizedException('Foydalanuvchi topilmadi yoki bloklangan');
     }
 
@@ -416,6 +417,11 @@ export class AuthService {
 
     await this.redis.set(K.refresh(refreshJti), userId, REFRESH_TTL);
     await this.redis.sadd(K.sessions(userId), refreshJti);
+
+    // Token faqat holati 'active' bo'lgan hisobga beriladi (yuqorida tekshirilgan),
+    // shuning uchun eskirgan bekor qilish belgisi tozalanadi — aks holda parol
+    // almashtirilgandan keyin foydalanuvchi o'z hisobiga kira olmay qolardi.
+    await this.redis.del(K.revoked(userId));
 
     return { accessToken, refreshToken, tokenType: 'Bearer', expiresIn: 3600 };
   }

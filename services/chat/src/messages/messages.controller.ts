@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Param, Body, Query, UseGuards, HttpCode, HttpStatus,
+  Param, Body, Query, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe,
 } from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -18,7 +18,7 @@ export class MessagesController {
   @Get('rooms/:roomId/messages')
   list(
     @CurrentUser() user: JwtUser,
-    @Param('roomId') roomId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
     @Query() dto: ListMessagesDto,
   ) {
     return this.messages.list(user, roomId, dto);
@@ -27,7 +27,7 @@ export class MessagesController {
   @Post('rooms/:roomId/messages')
   create(
     @CurrentUser() user: JwtUser,
-    @Param('roomId') roomId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
     @Body() dto: CreateMessageDto,
   ) {
     return this.messages.create(user, roomId, dto);
@@ -36,7 +36,7 @@ export class MessagesController {
   @Patch('messages/:id')
   update(
     @CurrentUser() user: JwtUser,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateMessageDto,
   ) {
     return this.messages.update(user, id, dto);
@@ -44,13 +44,13 @@ export class MessagesController {
 
   @Delete('messages/:id')
   @HttpCode(HttpStatus.OK)
-  remove(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+  remove(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.messages.delete(user, id);
   }
 
   @Post('messages/:id/read')
   @HttpCode(HttpStatus.OK)
-  read(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+  read(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.messages.markRead(user, id);
   }
 
@@ -58,7 +58,7 @@ export class MessagesController {
   @HttpCode(HttpStatus.OK)
   typing(
     @CurrentUser() user: JwtUser,
-    @Param('roomId') roomId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
     @Body() dto: TypingDto,
   ) {
     return this.messages.typing(user, roomId, dto.typing);

@@ -1,4 +1,5 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
+import { assertProductAccess } from '../common/product-access';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtUser } from '../common/decorators/current-user.decorator';
 import { BulkUpdateFieldConfigsDto } from './dto/field-configs.dto';
@@ -58,7 +59,7 @@ export class FieldConfigsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(user: JwtUser, productId: string, context: string) {
-    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
+    await assertProductAccess(this.prisma, user, productId);
 
     const existing = await this.prisma.fieldConfig.findMany({
       where: { productId, context },
@@ -79,6 +80,7 @@ export class FieldConfigsService {
 
   async bulkUpdate(user: JwtUser, productId: string, dto: BulkUpdateFieldConfigsDto) {
     if (!ADMIN_ROLES.has(user.role)) throw new ForbiddenException();
+    await assertProductAccess(this.prisma, user, productId);
 
     // Upsert har bir item
     await Promise.all(

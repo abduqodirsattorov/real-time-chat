@@ -2,9 +2,11 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { applyHttpHardening } from './common/http-hardening';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  applyHttpHardening(app);
   app.enableShutdownHooks();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   const port = process.env.PORT ?? 3006;

@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsArray, Matches } from 'class-validator';
+import { IsOptional, IsString, IsArray, Matches, IsIn } from 'class-validator';
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -18,6 +18,6 @@ export class UpdateUserDto {
   productIds?: string[];
 
   @IsOptional()
-  @IsString()
+  @IsIn(['active', 'suspended', 'deleted'])
   status?: string;
 }
