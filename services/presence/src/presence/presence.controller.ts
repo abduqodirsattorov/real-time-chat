@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, ForbiddenException } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, JwtUser } from '../common/decorators/current-user.decorator';
 import { PresenceService } from './presence.service';
@@ -15,7 +15,10 @@ export class PresenceController {
   }
 
   @Post('users/bulk')
-  getBulkPresence(@Body() dto: BulkPresenceDto) {
+  getBulkPresence(@Body() dto: BulkPresenceDto, @CurrentUser() user: JwtUser) {
+    if (!['operator', 'supervisor', 'admin'].includes(user.role)) {
+      throw new ForbiddenException('Faqat xodimlar ommaviy ko\'rsatkichni so\'rashi mumkin');
+    }
     return this.presence.getBulkPresence(dto.ids);
   }
 }

@@ -15,7 +15,24 @@ import { LiveKitController } from './livekit/livekit.controller';
 
 @Module({
   imports: [
-    LoggerModule.forRoot({ pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' } }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL ?? 'info',
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.headers["x-internal-service-key"]',
+            'token',
+            'callerToken',
+            'tokenA',
+            'tokenB',
+            'secret',
+          ],
+          censor: '[REDACTED]',
+        },
+      },
+    }),
     ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,

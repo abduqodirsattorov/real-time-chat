@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Body,
+  Headers,
   HttpException,
   HttpStatus,
   ForbiddenException,
@@ -11,6 +12,7 @@ import {
 import { NovaService } from './nova.service';
 import { AuditService } from '../common/audit/audit.service';
 import { CurrentUser, JwtUser, Public } from '../common/decorators/current-user.decorator';
+import { ExecuteNovaActionDto } from './dto/nova-action.dto';
 
 const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 const SUPERVISOR_ROLES = new Set(['supervisor', 'admin']);
@@ -57,20 +59,24 @@ export class NovaController {
     }
   }
 
-  /** Execute an action on Nova. Requires supervisor+ role. */
+  /** Execute an action on Nova. Requires supervisor+ role. Operator identity taken STRICTLY from JWT user.sub */
   @Post('action/:extId')
   async executeAction(
     @CurrentUser() user: JwtUser,
     @Param('extId') extId: string,
-    @Body() body: { action: string; operatorId?: string; params?: object },
+    @Body() body: ExecuteNovaActionDto,
+    @Headers('x-idempotency-key') idempotencyHeader?: string,
   ) {
-    if (!SUPERVISOR_ROLES.has(user.role)) throw new ForbiddenException();
+    if (!SUPERVISOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat supervisor va admin tranzaksiya amallarini bajara oladi');
+    const idempotencyKey = idempotencyHeader || body.idempotencyKey;
+    const operatorId = user.sub; // Operator ID hech qachon body'dan olinmaydi!
+
     try {
       const res = await this.nova.executeAction(
         extId,
         body.action,
-        body.operatorId ?? user.sub,
-        body.params,
+        operatorId,
+        { ...body.params, reason: body.reason, idempotencyKey },
       );
 
       await this.audit.log({
@@ -78,7 +84,7 @@ export class NovaController {
         action: `nova_action_${body.action}`,
         targetType: 'transaction',
         targetId: extId,
-        payload: { action: body.action, params: body.params, success: res.success },
+        payload: { action: body.action, params: body.params, reason: body.reason, idempotencyKey, success: res.success },
       });
 
       return res;
@@ -88,7 +94,7 @@ export class NovaController {
         action: `nova_action_${body.action}_failed`,
         targetType: 'transaction',
         targetId: extId,
-        payload: { action: body.action, params: body.params, error: err.message },
+        payload: { action: body.action, params: body.params, reason: body.reason, error: err.message },
       });
       const status = err?.response?.status ?? HttpStatus.BAD_GATEWAY;
       throw new HttpException(err?.response?.data ?? 'Nova error', status);

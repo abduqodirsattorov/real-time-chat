@@ -12,6 +12,8 @@ import { ConfirmDto } from './dto/confirm.dto';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as fileType from 'file-type';
+import { assertProductAccess } from '../common/product-access';
+import * as net from 'net';
 
 const UPLOAD_TTL = 3600;
 const VOICE_MAX_BYTES = 10 * 1024 * 1024;
@@ -110,11 +112,15 @@ export class MediaService implements OnModuleInit {
         detected: detected.mime,
         uploadId: dto.uploadId,
       });
-      // ClamAV stub — log only, do not block
+      throw new BadRequestException('Fayl formati (MIME type) e\'lon qilingan turga mos kelmadi');
     }
 
-    // ClamAV stub
-    this.logger.log({ event: 'clamav_stub', storageKey: state.storageKey, note: 'scan_skipped' });
+    // ClamAV Antivirus Scanner (INSTREAM protocol)
+    const isClean = await this.scanBufferWithClamAV(buf, state.storageKey);
+    if (!isClean) {
+      await this.minio.deleteObject(state.storageKey).catch(() => {});
+      throw new BadRequestException('Fayl tarkibida zararli dastur (virus yoki malware) aniqlandi va o\'chirildi');
+    }
 
     const attachment = await this.prisma.attachment.create({
       data: {
@@ -184,8 +190,7 @@ export class MediaService implements OnModuleInit {
   }
 
   private async verifyAttachmentAccess(user: JwtUser, att: any) {
-    const isStaff = ['operator', 'supervisor', 'admin'].includes(user.role);
-    if (isStaff) return;
+    if (user.role === 'admin') return;
 
     // Yuklovchi o'zi bo'lsa ruxsat
     if (att.uploaderId === user.sub) return;
@@ -203,6 +208,16 @@ export class MediaService implements OnModuleInit {
     });
 
     if (message) {
+      const isStaff = ['operator', 'supervisor'].includes(user.role);
+      if (isStaff) {
+        const room = await this.prisma.room.findUnique({
+          where: { id: message.roomId },
+          select: { productId: true },
+        });
+        await assertProductAccess(this.prisma, user, room?.productId);
+        return;
+      }
+
       // Foydalanuvchi aynan o'sha xonaning faol a'zosi bo'lishi shart
       const isMember = await this.prisma.roomMember.findFirst({
         where: {
@@ -364,5 +379,87 @@ export class MediaService implements OnModuleInit {
 
   private needsThumbnail(mimeType: string): boolean {
     return mimeType.startsWith('image/') || mimeType.startsWith('video/');
+  }
+
+  /**
+   * Scans a file buffer using the ClamAV daemon TCP socket via INSTREAM protocol.
+   * If CLAMAV_ENABLED is not set or false in dev mode, it logs a warning.
+   * In production mode, if enabled and scanning fails or detects malware, it fails closed.
+   */
+  private async scanBufferWithClamAV(buffer: Buffer, storageKey: string): Promise<boolean> {
+    const enabled = process.env.CLAMAV_ENABLED === 'true';
+    if (!enabled) {
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.warn({
+          event: 'clamav_disabled_warning',
+          message: 'ClamAV antivirus skanerlash ishlab chiqarishda yoqilmagan. CLAMAV_ENABLED=true qiling.',
+          storageKey,
+        });
+      }
+      return true;
+    }
+
+    const host = process.env.CLAMAV_HOST || 'clamav';
+    const port = Number(process.env.CLAMAV_PORT || 3310);
+
+    return new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host, port }, () => {
+        // ClamAV INSTREAM format: 'zINSTREAM\0'
+        socket.write(Buffer.from('zINSTREAM\0'));
+        const chunkSize = 2048;
+        for (let i = 0; i < buffer.length; i += chunkSize) {
+          const chunk = buffer.subarray(i, i + chunkSize);
+          const lenBuf = Buffer.alloc(4);
+          lenBuf.writeUInt32BE(chunk.length, 0);
+          socket.write(lenBuf);
+          socket.write(chunk);
+        }
+        const endBuf = Buffer.alloc(4);
+        endBuf.writeUInt32BE(0, 0);
+        socket.write(endBuf);
+      });
+
+      let response = '';
+      socket.on('data', (data) => {
+        response += data.toString('utf8');
+      });
+
+      socket.on('end', () => {
+        if (response.includes('OK')) {
+          this.logger.log({ event: 'clamav_scan_clean', storageKey, response: response.trim() });
+          resolve(true);
+        } else if (response.includes('FOUND')) {
+          this.logger.error({ event: 'clamav_virus_detected', storageKey, response: response.trim() });
+          resolve(false);
+        } else {
+          this.logger.error({ event: 'clamav_unexpected_response', storageKey, response: response.trim() });
+          if (process.env.NODE_ENV === 'production') {
+            reject(new Error(`ClamAV xatosi: ${response}`));
+          } else {
+            resolve(true);
+          }
+        }
+      });
+
+      socket.on('error', (err) => {
+        this.logger.error({ event: 'clamav_connection_failed', storageKey, error: err.message });
+        if (process.env.NODE_ENV === 'production') {
+          reject(new Error(`ClamAV xizmatiga ulanib bo'lmadi: ${err.message}`));
+        } else {
+          // Dev mode fallback
+          resolve(true);
+        }
+      });
+
+      socket.setTimeout(10000, () => {
+        socket.destroy();
+        this.logger.error({ event: 'clamav_scan_timeout', storageKey });
+        if (process.env.NODE_ENV === 'production') {
+          reject(new Error('ClamAV skanerlash vaqti tugadi'));
+        } else {
+          resolve(true);
+        }
+      });
+    });
   }
 }

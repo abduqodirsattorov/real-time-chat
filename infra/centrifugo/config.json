@@ -1,10 +1,13 @@
 {
-  "token_hmac_secret_key": "centrifugo_hmac_secret_change_me_32chars",
-  "api_key": "centrifugo_api_key_change_me",
-  "admin": true,
-  "admin_password": "admin",
-  "admin_secret": "admin_secret_change_me_32chars_xx",
-  "allowed_origins": ["*"],
+  "admin": false,
+  "allowed_origins": [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8090",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8090"
+  ],
   "namespaces": [
     {
       "name": "chat",

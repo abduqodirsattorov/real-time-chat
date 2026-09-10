@@ -10,7 +10,20 @@ import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
-    LoggerModule.forRoot({ pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' } }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL ?? 'info',
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'token',
+            'secret',
+          ],
+          censor: '[REDACTED]',
+        },
+      },
+    }),
     PrismaModule,
     RabbitMQModule,
     CentrifugoModule,

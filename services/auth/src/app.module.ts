@@ -25,6 +25,22 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
             };
           },
         },
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.headers["x-internal-service-key"]',
+            'req.headers["x-centrifugo-signature"]',
+            'password',
+            'token',
+            'accessToken',
+            'refreshToken',
+            'otp',
+            'signature',
+            'secret',
+          ],
+          censor: '[REDACTED]',
+        },
       },
     }),
     PrismaModule,

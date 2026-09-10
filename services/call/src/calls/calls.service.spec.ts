@@ -73,6 +73,7 @@ describe('CallsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    process.env.INTERNAL_SERVICE_KEY = 'test_internal_service_key_for_unit_testing';
     global.fetch = jest.fn();
     const module = await Test.createTestingModule({
       providers: [
@@ -246,7 +247,7 @@ describe('CallsService', () => {
     mockPrisma.recording.findUnique.mockResolvedValue({
       id: 'rec-1', callId: 'c1', status: 'starting', consentAnnounced: false, startedAt: new Date(),
     });
-    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', livekitRoom: 'room-1', status: 'connected' });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', callerId: 'cust-1', calleeId: 'op-1', livekitRoom: 'room-1', status: 'connected' });
     mockPrisma.recording.update.mockResolvedValue({ id: 'rec-1', consentAnnounced: true });
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
@@ -281,6 +282,7 @@ describe('CallsService', () => {
 
   it('T18: stopRecording stops active recording', async () => {
     const startedAt = new Date(Date.now() - 30_000);
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', callerId: 'cust-1', calleeId: 'op-1', livekitRoom: 'room-1', status: 'connected' });
     mockPrisma.recording.findFirst.mockResolvedValue({ id: 'rec-1', callId: 'c1', egressId: 'egress-123', startedAt, status: 'active' });
     mockPrisma.recording.update.mockResolvedValue({ status: 'processing' });
     mockRabbitmq.publish.mockResolvedValue(undefined);

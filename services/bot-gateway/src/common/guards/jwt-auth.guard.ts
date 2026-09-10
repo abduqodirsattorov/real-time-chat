@@ -14,7 +14,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (!ok) return false;
 
     const req = ctx.switchToHttp().getRequest();
-    if (req.user?.sub) await assertAccountActive(this.prisma, req.user.sub);
+    if (req.user?.sub) await assertAccountActive(this.prisma, req.user.sub, req.user.role);
     return true;
   }
 }

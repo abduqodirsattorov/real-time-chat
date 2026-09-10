@@ -44,6 +44,26 @@ import { AuditModule } from './common/audit/audit.module';
         transport: process.env.LOG_PRETTY === 'true'
           ? { target: 'pino-pretty', options: { singleLine: true } }
           : undefined,
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.headers["x-internal-service-key"]',
+            'req.headers["x-centrifugo-signature"]',
+            'req.headers["x-signature"]',
+            'password',
+            'token',
+            'accessToken',
+            'refreshToken',
+            'otp',
+            'signature',
+            'secret',
+            'passport',
+            'pan',
+            'cvv',
+          ],
+          censor: '[REDACTED]',
+        },
       },
     }),
     PassportModule,

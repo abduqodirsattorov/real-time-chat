@@ -82,3 +82,95 @@ Ushbu qoidalar har qanday dasturiy ta'minot (ayniqsa, fintech, real-time aloqa v
      - Begona mahsulot / tenant resursini o'qish/yozish urinishlari (`403 / 404`).
      - Bloklangan/o'chirilgan akkauntning barcha servislarga kirish urinishlari (`401 Unauthorized`).
      - Fuzzing: buzilgan UUID, SQLi, path traversal, noto'g'ri signaturalar (`400 / 401`, hech qachon `500` emas).
+
+---
+
+## 10. Fail-Closed Secrets & Zero-Default-Credentials Qoidasi
+* **Muammo:** `JWT_SECRET ?? 'dev_secret'` yoki `INTERNAL_SERVICE_KEY ?? 'internal_service_default_secret_key'` kabi fallbacklar productionda env sozlanmaganda ochiq qolib, tizimni soxta tokenlar yoki admin kirishlariga zaif qiladi.
+* **Qat'iy Qoida:**
+  1. Barcha servislar startup paytida o'z maxfiy kalitlarini (`JWT_SECRET`, `INTERNAL_SERVICE_KEY`, `CENTRIFUGO_WEBHOOK_SECRET`) qat'iy tekshiradi.
+  2. Kalit belgilanmagan yoki ma'lum dev-qiymat bo'lsa, servis ishga tushmasdan (`throw new Error`) darhol to'xtaydi (fail-closed). Hech qanday fallbackga yo'l qo'yilmaydi.
+
+---
+
+## 11. Absolute Zero-Trust for Operators (Tenant Chegaralarini Buzmaslik) Qoidasi
+* **Muammo:** Kodda `if (isStaff) return;` yoki `if (['operator', 'admin'].includes(user.role)) return room;` orqali operatorga barcha tenantlar ma'lumotlariga ruxsat berish cross-tenant ma'lumot sizishiga (audio eshitish, rasm/hujjat yuklab olish) olib keladi.
+* **Qat'iy Qoida:**
+  1. Operator roli HECH QACHON tenant tekshiruvini chetlab o'tolmaydi.
+  2. Faqat super-admin (`admin`) barcha tenantlarni ko'ra oladi; `operator` va `supervisor` esa FAQAT `operator_products` dagi biriktirilgan mahsulotlarga tegishli qo'ng'iroq, navbat, xona va fayllarga kira oladi.
+
+---
+
+## 12. Default-Deny for Real-Time & Webhooks Qoidasi
+* **Muammo:** Centrifugo subscribe kontrollerida noma'lum kanallar uchun `{ result: {} }` qaytarish yoki webhook kontrollerida imzo yo'qligida `return true` qilish.
+* **Qat'iy Qoida:**
+  1. Centrifugo va WebSocket kanallari aniq oq ro'yxatga (whitelisted patterns) ega bo'lishi shart. Ro'yxatdan tashqari har qanday kanal qat'iy rad etiladi (`code: 1000`).
+  2. Barcha webhook kontrollerlari `rawBody: true` bilan sozlangan bo'lishi va byte-for-byte HMAC imzo tekshiruvini majburiy bajarishi shart. Imzosiz yoki noto'g'ri imzo bilan kelgan so'rovlar darhol 401/403 qaytaradi.
+
+---
+
+## 13. Dynamic Role Consistency & True Session Revocation Qoidasi
+* **Muammo:** Rol o'zgarganda (demote) foydalanuvchi mavjud JWT muddati tugaguncha eski rolda qolishi yoki logout faqat noto'g'ri jti'ni o'chirishi natijasida refresh token yashab qolishi.
+* **Qat'iy Qoida:**
+  1. `account-status.ts` da har bir so'rovda keshdan foydalanuvchining joriy roli ham tekshiriladi; agar bazadagi rol JWT dagidan farq qilsa, so'rov rad etiladi yoki rol yangilanadi.
+  2. Logout amali refresh tokenni Redis'dan to'liq yo'q qiladi va access token jti'sini qora ro'yxatga qo'shadi.
+
+---
+
+## 14. Atomic Telephony Lifecycle Transitions Qoidasi
+* **Muammo:** Qo'ng'iroqni tugatish (`hangupCall`) yoki o'tkazish (`executeColdTransfer`) paytida bir nechta mustaqil DB so'rovlari va LiveKit chaqiruvlari ketma-ket bajarilib, oradagi xatolik sabab operator `onCall: true` bo'lib qotib qolishi.
+* **Qat'iy Qoida:**
+  1. Barcha DB holat o'zgarishlari (Call status, OperatorState, CallTransfer) `prisma.$transaction` ichida atomik bajariladi.
+  2. LiveKit/tashqi xizmatlar xatosi DB tranzaksiyasining izchilligini buzmasligi va resurslar tozalanishi (compensating actions) kafolatlanadi.
+
+---
+
+## 15. Private Object Storage Invariant (S3/MinIO Qat'iy Yopiq Bo'lishi) Qoidasi
+* **Muammo:** S3/MinIO bucketlariga `anonymous set download` berilsa, barcha mijoz pasportlari, audio yozuvlar va shaxsiy hujjatlar URL yoki UUID topilgan taqdirda autentifikatsiyasiz ochiq yuklab olinadi.
+* **Qat'iy Qoida:**
+  1. Barcha S3/MinIO bucketlari `mc anonymous set none` bilan MUTLAQ YOPIQ (private) qilinadi.
+  2. Barcha fayllarga kirish faqat xizmat API'si orqali, qat'iy autentifikatsiya va qisqa muddatli (maksimal 15 daqiqa) signed URL orqali amalga oshiriladi.
+
+---
+
+## 16. Fail-Closed Webhooks & Mandatory Byte-level HMAC Qoidasi
+* **Muammo:** Webhook kontrollerida imzo tekshirish blokida `catch (err) { /* warn and continue */ }` kabi fail-open yozilsa, hujumchi soxta eventlar yuborib yozuvlarni tugatishi, soxta tranzaksiya holatlarini o'rnatishi mumkin.
+* **Qat'iy Qoida:**
+  1. Webhook kontrollerlarida hech qanday dev-bypass yoki ogohlantirish bilan o'tkazib yuborishga yo'l qo'yilmaydi.
+  2. Raw body mavjud bo'lishi va byte-for-byte HMAC imzo tekshiruvi bajarilishi shart. Noto'g'ri yoki yo'q imzo darhol `401 Unauthorized` bilan to'xtatiladi.
+  3. Muhitda webhook secret yo'q bo'lsa, servis startup paytida xato tashlab ishga tushmaydi (`fail-closed`).
+
+---
+
+## 17. Financial Identity Invariant (Operator Identity Never from Body) Qoidasi
+* **Muammo:** Tranzaksiya yoki audit talab qiluvchi amallarda `operatorId` request body yoki query'dan olinsa (`body.operatorId ?? user.sub`), bir xodim boshqa xodim nomidan noqonuniy amallarni bajarib, audit trailni soxtalashtirishi mumkin.
+* **Qat'iy Qoida:**
+  1. Moliyaviy va ma'muriy amallarda ijrochi ID'si HECH QACHON mijoz yuborgan body'dan olinmaydi. Ijrochi FAQAT va FAQAT server tomonidan tasdiqlangan JWT token (`req.user.sub`) orqali olinadi.
+  2. Barcha tranzaksiyaviy amallar qat'iy Allowlist DTO (`action`), unikal Idempotency Key va sabab kodi (`reason`, minimum 5 belgi) bilan ta'minlanishi shart.
+
+---
+
+## 18. Trusted Reverse-Proxy Rate Limiting & Anti-Spoofing Qoidasi
+* **Muammo:** Rate limiter klient yuborgan xom `X-Forwarded-For` sarlavhasiga ishonsa, hujumchi ushbu sarlavhaga tasodifiy IP yozib cheklovlarni (DDoS, brute-force) to'liq chetlab o'tadi.
+* **Qat'iy Qoida:**
+  1. Klient jo'natgan `X-Forwarded-For` ga to'g'ridan-to'g'ri ishonish qat'iyan taqiqlanadi.
+  2. Express/Fastify serverlarida `trust proxy` faqat 1-darajali ichki reverse-proxy (Traefik/Nginx) uchun yoqiladi va IP faqat `req.ip` orqali olinadi.
+
+---
+
+## 19. Production Configuration Isolation & Zero-Dev-Secret Qoidasi
+* **Muammo:** `docker-compose.yml` da `mock-nova`, default `minioadmin` va `change_me` kalitlari default qiymat sifatida tursa, tasodifan real deployda zaif kalitlar bilan ishlab ketish xavfi yuzaga keladi.
+* **Qat'iy Qoida:**
+  1. Production muhiti uchun alohida `docker-compose.prod.yml` yoki Kubernetes manifestlari ishlatiladi.
+  2. Production deployda barcha maxfiy kalitlar (Secrets) tashqi Vault/KMS yoki xavfsiz muhit orqali yuklanadi va startup'da ularning murakkabligi (entropiyasi) qat'iy tekshiriladi.
+  3. Mock xizmatlar production konfiguratsiyasiga mutlaqo kiritilmaydi.
+
+---
+
+## 20. Zero-PII & Secret Log Scrubbing Invariant Qoidasi
+* **Muammo:** `Authorization` headerlari, cookie fayllar, pasport ma'lumotlari, karta raqamlari yoki webhook signaturalari server loglariga tushsa, bu PCI-DSS va O'zbekiston MB 3759-sonli nizomini qo'pol ravishda buzadi.
+* **Qat'iy Qoida:**
+  1. Barcha mikroservislarning logging tizimida (Pino/Winston) `redact` qoidalari majburiy o'rnatiladi.
+  2. `authorization`, `cookie`, `secret`, `password`, `token`, `otp`, `signature`, `pan`, `passport` maydonlari avtomatik `[REDACTED]` qilinadi.
+
+

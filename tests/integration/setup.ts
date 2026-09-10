@@ -6,7 +6,14 @@
  *                 (services must be running: docker compose up -d)
  */
 import axios from 'axios';
+import * as http from 'http';
+import * as https from 'https';
 import { execSync } from 'child_process';
+
+const noKeepAliveHttp = new http.Agent({ keepAlive: false });
+const noKeepAliveHttps = new https.Agent({ keepAlive: false });
+axios.defaults.httpAgent = noKeepAliveHttp;
+axios.defaults.httpsAgent = noKeepAliveHttps;
 
 export const BASE = process.env.BASE_URL ?? 'http://localhost:80/api/v1';
 export const PROJECT_DIR =
@@ -108,8 +115,11 @@ export function makeHttp(token: string, productId?: string) {
   return axios.create({
     baseURL: BASE,
     validateStatus: () => true,
+    httpAgent: noKeepAliveHttp,
+    httpsAgent: noKeepAliveHttps,
     headers: {
       Authorization: `Bearer ${token}`,
+      Connection: 'close',
       ...(productId ? { 'X-Product-Id': productId } : {}),
     },
   });

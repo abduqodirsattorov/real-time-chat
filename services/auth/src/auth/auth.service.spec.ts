@@ -214,9 +214,11 @@ describe('AuthService', () => {
     function makeDto(overrides: Partial<{ novaUserId: string; timestamp: number; signature: string }> = {}) {
       const novaUserId = overrides.novaUserId ?? '42';
       const timestamp = overrides.timestamp ?? Math.floor(Date.now() / 1000);
+      const novaRole = 'operator';
+      const locale = 'uz';
       const signature =
         overrides.signature ??
-        createHmac('sha256', process.env.NOVA_SSO_SECRET).update(`${novaUserId}:${timestamp}`).digest('hex');
+        createHmac('sha256', process.env.NOVA_SSO_SECRET).update(`${novaUserId}:${timestamp}:${novaRole}:${locale}`).digest('hex');
       return { novaUserId, novaRole: 'operator' as const, fullName: 'Nova Admin', locale: 'uz' as const, timestamp, signature };
     }
 

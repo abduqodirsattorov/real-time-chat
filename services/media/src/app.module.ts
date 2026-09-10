@@ -36,6 +36,16 @@ class HealthController {
       pinoHttp: {
         level: process.env.LOG_LEVEL ?? 'info',
         transport: process.env.LOG_PRETTY === 'true' ? { target: 'pino-pretty' } : undefined,
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'token',
+            'secret',
+            'uploadUrl',
+          ],
+          censor: '[REDACTED]',
+        },
       },
     }),
     PrismaModule,

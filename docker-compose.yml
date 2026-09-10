@@ -85,8 +85,9 @@ services:
       mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123};
       mc mb -p local/nova-media || true;
       mc mb -p local/nova-recordings || true;
-      mc anonymous set download local/nova-media || true;
-      echo 'MinIO buckets ready';
+      mc anonymous set none local/nova-media || true;
+      mc anonymous set none local/nova-recordings || true;
+      echo 'MinIO buckets secured (private)';
       "
     restart: on-failure
 
@@ -134,6 +135,9 @@ services:
   centrifugo:
     image: centrifugo/centrifugo:v5
     command: centrifugo -c /centrifugo/config.json
+    environment:
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_SECRET:-centrifugo_hmac_secret_change_me_32chars}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-centrifugo_api_key_change_me}
     volumes:
       - ./infra/centrifugo/config.json:/centrifugo/config.json:ro
     ports:
@@ -233,6 +237,7 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
       CENTRIFUGO_API_URL: http://centrifugo:8000/api
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET}
       MEILI_URL: http://meilisearch:7700
       MEILI_KEY: ${MEILI_MASTER_KEY}
       JWT_SECRET: ${JWT_SECRET}
@@ -272,7 +277,7 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672
       CENTRIFUGO_API_URL: http://centrifugo:8000/api
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
-      CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3003
@@ -356,7 +361,7 @@ services:
       RECORDING_ANNOUNCEMENT_URL_RU: http://minio:9000/nova-media/sys/recording_ru.mp3
       HOLD_MUSIC_URL: http://minio:9000/nova-media/sys/hold_music.mp3
       RECORDING_SERVICE_URL: http://recording-service:3007
-      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-internal_service_default_secret_key}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3005
     ports:
@@ -434,7 +439,7 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
       LIVEKIT_SECRET: ${LIVEKIT_SECRET:-devsecret_change_me_32_chars_minimum_xx}
       JWT_SECRET: ${JWT_SECRET}
-      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-internal_service_default_secret_key}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3007
     ports:
@@ -550,7 +555,7 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - --api.insecure=true
+      - --api.insecure=false
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --providers.file.filename=/traefik/dynamic.yml

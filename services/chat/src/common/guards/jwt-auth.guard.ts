@@ -30,8 +30,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (revoked) {
         throw new UnauthorizedException('Akkaunt bloklangan yoki sessiya bekor qilingan');
       }
-      // Haqiqat manbai: bazadagi hisob holati (Redis kaliti yo'qolsa ham ishlaydi)
-      await assertAccountActive(this.prisma, user.sub);
+      // Haqiqat manbai: bazadagi hisob holati va roli
+      await assertAccountActive(this.prisma, user.sub, user.role);
     }
 
     return true;

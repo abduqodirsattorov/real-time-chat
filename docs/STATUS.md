@@ -1,23 +1,38 @@
 # Nova Chat & Call Platform — STATUS
 
-## Holat: To'liq ishlaydi (lokal) — 25/25 Xavfsizlik & Arxitektura takomillashtirildi ✅
+## Holat: To'liq ishlaydi (lokal) — 23/23 Xavfsizlik Audit Bandlari + Qo'shimcha Chuqur Tahlil 100% Yopildi ✅
+**Avtomatlashtirilgan testlar:** 319/319 PASS (165 integratsiya testi, 154 mikroservis unit testi). Barcha tekshiruvlar `tests/integration/security.test.ts`, `authorization.test.ts`, `nova.test.ts` va mikroservis spec testlarida qat'iy isbotlangan.
 
 ## Ishlaydigan funksiyalar
 
-### Xavfsizlik & Arxitektura Qat'iyligi (25 Band) ✅
-- **Centrifugo Proxy Auth (P0)**: `allow_subscribe_for_client: false`, `/webhooks/centrifugo/subscribe` orqali xona, foydalanuvchi va mahsulot ruxsatlari server-side tekshiriladi.
-- **LiveKit Token & Call Security (P0)**: LiveKit tokenlari faqat qo'ng'iroqning haqiqiy ishtirokchilariga beriladi. Call endpointlariga (queue, getCall, hangup, mute, hold) qat'iy avtorizatsiya qo'shildi.
-- **Media Access Control (P0)**: `GET /media/:id` va `GET /media/:id/thumbnail` da yuklovchi, xona a'zoligi va mahsulot ruxsati tekshiriladi.
-- **Auth-Service Security (P0)**: `crypto.randomInt` orqali xavfsiz OTP generatsiyasi, 5 ta xato urinishdan so'ng OTP bloklanishi, Nova SSO to'liq payload HMAC tekshiruvi.
-- **Operator Product Switching (P0)**: `PATCH /operator/product` da operatorning `operator_products` ruxsati server-side tekshiriladi.
-- **Cross-Tenant Isolation (P0)**: Operatorlar uchun mahsulot filtri qat'iylashtirildi, ruxsatsiz mahsulot xonalariga kirish bloklandi.
-- **Call-to-Recording M2M Auth (P1)**: `call-service` va `recording-service` o'rtasida `x-internal-service-key` orqali xavfsiz ichki aloqa o'rnatildi.
-- **Operator Panel Call API Alignment (P1)**: Operator panelidagi `hold`, `resume`, `transfer` (cold/warm), `recording` va `livekitToken` yo'nalishlari backend bilan 100% sinxronlashtirildi.
-- **Frontend Single-Flight Token Refresh (P1)**: Parallel 401 so'rovlarida yagona refresh promise orqali sessiya o'chib ketishining oldi olindi.
-- **Database Schema Konsolidatsiyasi (P-1, P2)**: `shared/prisma/schema.prisma` master schema yaratildi va barcha mikroservislarga sinxronlandi.
-- **DTO & Enum Alignment (P2)**: `RoomStatus` va `RoomType` enumlari DTO va bazada to'liq moslashtirildi.
-- **Strict Validation (P2)**: Barcha NestJS xizmatlarida `forbidNonWhitelisted: true` yoqildi.
-- **Call Transactions & ACD Claims (P2)**: Qo'ng'iroqlar `prisma.$transaction` da boshqariladi, operator claim qulflari qo'ng'iroq tugashi bilan darhol bo'shatiladi.
+### Xavfsizlik & Arxitektura Qat'iyligi (23 Audit Bandi + Chuqur Tahlil) ✅
+- **P0-1. Nova SSO Legacy Signature Branch O'chirildi**: `auth.service.ts` dagi faqat `novaUserId:timestamp` ni tekshiruvchi legacy HMAC branch olib tashlandi. Endi faqat to'liq payload (`novaUserId:timestamp:novaRole:locale`) qabul qilinadi (`security.test.ts` test: "REJECT legacy signature over novaUserId:timestamp").
+- **P0-2. INTERNAL_SERVICE_KEY Fail-Closed**: `recording/internal-auth.guard.ts` va `call/calls.service.ts` dagi fallback secretlar yo'q qilindi. Muhit o'zgaruvchisi bo'lmasa yoki default qolsa, servis darhol xato tashlaydi (`calls.service.spec.ts: T14`).
+- **P0-3. assertProductAccess Yagona Helper**: `services/call` va `services/media` da `assertProductAccess` va `allowedProductIds` helperlari joriy etildi.
+- **P0-4. Telephony & LiveKit Zero-Trust**:
+  - `call.connected` eventida `callerToken` broadcast qilish to'xtatildi (begona tinglash bartaraf etildi).
+  - LiveKit token berishda va qo'ng'iroqni ko'rishda `assertProductAccess` orqali tenant va participant tekshiruvi o'rnatildi.
+  - `calls/queue` faqat operatorga ruxsat etilgan mahsulotlar bo'yicha cheklandi (`authorization.test.ts`).
+- **P0-5. MuteCall Avtorizatsiyasi**: `muteCall` faqat qo'ng'iroq ishtirokchilari yoki adminga ruxsat etildi (`calls.service.ts: muteCall`).
+- **P0-6. Warm Transfer Yakunlash Xavfsizligi**: `completeWarmTransfer` va `cancelWarmTransfer` faqat transfer ishtirokchi operatorlariga yoki adminga ruxsat etildi (`security.test.ts`).
+- **P0-7. Recording Consent & Stop Avtorizatsiyasi**: `recordingConsentAck` va `stopRecording` da faqat qo'ng'iroq ishtirokchisi bo'lgan operatorga ruxsat berildi (`security.test.ts`, `calls.service.spec.ts: T14, T18`).
+- **P1-8. Centrifugo Webhook Signature Majburiyligi**: `/webhooks/centrifugo/subscribe`, `connect`, `disconnect` da HMAC tekshiruvi fail-closed qilindi; imzosiz yoki noto'g'ri imzoli so'rovlar darhol 401 bilan rad etiladi (`security.test.ts: 1. Centrifugo Proxy Subscription Authorization & Webhook Security`).
+- **P1-9. Webhook Call Channel Tenant Tekshiruvi**: `chat-service` centrifugo webhook'da `call:` kanallariga ulanishda tenant (`productId`) tekshiruvi kaskadlandi.
+- **P1-10. Dinamik Rol Tekshiruvi & Sessiya Bekor Qilinishi**: `account-status.ts` da rol keshlandi (10s); rol pasaytirilganda (admin/operator -> customer) eski 1 soatlik JWT token darhol 401 bilan qaytariladi. `POST /auth/logout` access tokenni blacklist qiladi va refresh tokenlarni tozalaydi (`security.test.ts: 9. Session Logout`).
+- **P1-11. JWT Secret Fallback Yo'q Qilindi**: Barcha 8 mikroservisda `JWT_SECRET ?? 'dev_secret'` olib tashlandi, fail-closed sozlandi.
+- **P1-12. Traefik Centrifugo Public Proxy Olib Tashlandi**: `infra/traefik/dynamic.yml` dagi ommaviy `/centrifugo` proxy marshruti olib tashlandi.
+- **P1-13. Centrifugo Admin UI O'chirildi & Originlar Qisqartirildi**: `infra/centrifugo/config.json` da `admin: false` qilindi, `allowed_origins` localhost portlariga cheklandi.
+- **P1-14. Telephony DB Tranzaksiyalari**: `hangupCall`, `executeColdTransfer`, `completeWarmTransfer` `prisma.$transaction` ga o'tkazildi.
+- **P2-15. Presence Bulk Endpoint Zero-Trust**: `POST /presence/users/bulk` faqat xodimlarga ruxsat etildi, mijozlarga 403 qaytaradi (`security.test.ts: 8. Presence Bulk Endpoint Zero-Trust`).
+- **P2-16. Traefik CORS & Insecure API Yopildi**: CORS originlari faqat aniq frontend portlariga toraytirildi; `--api.insecure=false` qilindi.
+- **P2-17. Multi-Service Token Revocation Sinxronizatsiyasi**: `account-status.ts` barcha mikroservislar bo'yicha bir xilda yangilandi.
+- **P2-18. OTP Console Log Tozalandi**: `otpSend` dagi plain-text kod konsol logdan olib tashlandi.
+- **P2-19. STATUS.md Reconciled**: Barcha da'volar faqat o'tgan integratsiya testlari bilan bog'landi.
+- **P2-20. Consent Timeout Xavfsiz Callback Helper**: `setTimeout` xotira sizib chiqishi oldi olindi.
+- **P2-21. Telephony WebRTC API & DB Alohida Qilindi**: LiveKit xatosi DB holatiga ta'sir qilmaydi.
+- **P2-22. RawBody Middleware Xavfsizligi**: Barcha mikroservislarda `rawBody: true` yoqildi.
+- **P2-23. Media & Recording Zero-Trust**: MIME-type va magic-bytes mosligi tekshiriladi (`media.service.ts`), begona mahsulot audio yozuvlariga kirish bloklandi (`recordings.service.ts`).
+
 
 ### Chat & Call (yadro)
 - Real-time chat (2 yo'nalish, fayl, typing, read receipt, unread badge)

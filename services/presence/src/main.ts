@@ -6,7 +6,7 @@ import { Logger } from 'nestjs-pino';
 import { applyHttpHardening } from './common/http-hardening';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   applyHttpHardening(app);
   app.enableShutdownHooks();
   app.useLogger(app.get(Logger));

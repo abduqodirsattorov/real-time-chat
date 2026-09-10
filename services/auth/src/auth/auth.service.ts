@@ -77,9 +77,11 @@ export class AuthService {
     await this.redis.set(K.otp(phone), otp, OTP_TTL);
     await this.redis.del(K.otpAttempts(phone));
 
-    // SMS provider yo'q — lokal console.log fallback
-    this.logger.warn({ event: 'otp_sent', phone });
-    console.log(`[OTP] ${phone}: ${otp}`);
+    // SMS provider yo'q — xavfsiz log (plain-text OTP chop etilmaydi)
+    this.logger.warn({ event: 'otp_sent', phone: phone.replace(/(\+\d{3}\d{2})\d{4}(\d{2})/, '$1****$2') });
+    if (process.env.NODE_ENV === 'test' && process.env.DEBUG_OTP === 'true') {
+      console.log(`[OTP-TEST] ${phone}: ${otp}`);
+    }
 
     return { message: 'OTP yuborildi', ttl: OTP_TTL };
   }
@@ -193,10 +195,23 @@ export class AuthService {
 
   // ── Logout ───────────────────────────────────────────────────────────────────
 
-  async logout(userId: string, jti: string) {
-    await this.redis.del(K.refresh(jti));
-    await this.redis.srem(K.sessions(userId), jti);
-    this.logger.log({ event: 'logout', userId });
+  async logout(userId: string, jti: string, refreshJti?: string) {
+    if (refreshJti) {
+      await this.redis.del(K.refresh(refreshJti));
+      await this.redis.srem(K.sessions(userId), refreshJti);
+    }
+    // Foydalanuvchining barcha sessiya kalitlarini tozalash va access tokenni bekor qilish
+    const sessions = await this.redis.smembers(K.sessions(userId));
+    if (sessions && sessions.length > 0) {
+      for (const s of sessions) {
+        await this.redis.del(K.refresh(s));
+      }
+      await this.redis.del(K.sessions(userId));
+    }
+    await this.redis.set(K.revoked(userId), 'revoked');
+    await this.redis.set(`auth:revoked_jti:${jti}`, '1', 3600);
+
+    this.logger.log({ event: 'logout', userId, jti });
     return { message: 'Tizimdan chiqdingiz' };
   }
 
@@ -326,12 +341,32 @@ export class AuthService {
     // 4. Qo'ng'iroq kanali: call:call#<callId> yoki call:<callId>
     else if (channel.startsWith('call:call#') || channel.startsWith('call:')) {
       const callId = channel.replace('call:call#', '').replace('call:', '');
-      if (UUID_REGEX.test(callId)) {
-        const call = await this.prisma.call.findUnique({ where: { id: callId } });
-        if (call && call.callerId !== userId && call.calleeId !== userId && !isStaff) {
+      if (!UUID_REGEX.test(callId)) {
+        throw new BadRequestException('Noto\'g\'ri call ID formati');
+      }
+      const call = await this.prisma.call.findUnique({ where: { id: callId } });
+      if (!call) {
+        throw new NotFoundException('Qo\'ng\'iroq topilmadi');
+      }
+      const isParticipant = call.callerId === userId || call.calleeId === userId;
+      if (!isParticipant) {
+        if (!isStaff) {
           throw new ForbiddenException('Qo\'ng\'iroq kanaliga ruxsat yo\'q');
         }
+        if (call.productId && user.role !== 'admin') {
+          const hasProductAccess = await this.prisma.operatorProduct.findFirst({
+            where: { userId, productId: call.productId },
+          });
+          if (!hasProductAccess) {
+            this.logger.warn({ event: 'centrifugo_token_call_tenant_denied', userId, callId, productId: call.productId });
+            throw new ForbiddenException('Ushbu mahsulot qo\'ng\'iroq kanaliga ruxsat yo\'q');
+          }
+        }
       }
+    } else {
+      // Default-Deny: aniq mos kelmagan kanallar qat'iy rad etiladi
+      this.logger.warn({ event: 'centrifugo_token_unknown_channel_denied', userId, channel });
+      throw new ForbiddenException('Ruxsat etilmagan kanal formati');
     }
 
     const token = this.jwt.sign(
@@ -355,16 +390,12 @@ export class AuthService {
       throw new UnauthorizedException('Timestamp muddati o\'tgan yoki kelgusidagi vaqt');
     }
 
-    // 2. HMAC signature tekshirish (to'liq payload yoki legacy)
+    // 2. HMAC signature tekshirish (faqat to'liq payload, legacy yo'q)
     const expected = createHmac('sha256', ssoSecret)
       .update(`${dto.novaUserId}:${dto.timestamp}:${dto.novaRole}:${dto.locale ?? 'uz'}`)
       .digest('hex');
 
-    const legacyExpected = createHmac('sha256', ssoSecret)
-      .update(`${dto.novaUserId}:${dto.timestamp}`)
-      .digest('hex');
-
-    if (!timingSafeEqual(expected, dto.signature) && !timingSafeEqual(legacyExpected, dto.signature)) {
+    if (!timingSafeEqual(expected, dto.signature)) {
       this.logger.warn({ event: 'nova_sso_invalid_signature', novaUserId: dto.novaUserId });
       throw new UnauthorizedException('Imzo yaroqsiz');
     }
@@ -406,7 +437,7 @@ export class AuthService {
     const refreshJti = uuidv4();
 
     const accessToken = this.jwt.sign(
-      { sub: userId, role, locale, jti },
+      { sub: userId, role, locale, jti, refreshJti },
       { secret: process.env.JWT_SECRET, expiresIn: ACCESS_TTL },
     );
 

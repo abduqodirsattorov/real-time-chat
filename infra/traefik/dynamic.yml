@@ -66,13 +66,6 @@ http:
       service: centrifugo
       middlewares: ["cors"]
 
-    # ── Centrifugo API (internal) ─────────────────────────────────────────────
-    centrifugo-api:
-      rule: "PathPrefix(`/centrifugo`)"
-      entrypoints: ["web"]
-      service: centrifugo
-      middlewares: ["strip-centrifugo-prefix"]
-
   services:
     auth-service:
       loadBalancer:
@@ -120,15 +113,15 @@ http:
         prefixes:
           - "/api/v1"
 
-    strip-centrifugo-prefix:
-      stripPrefix:
-        prefixes:
-          - "/centrifugo"
-
     cors:
       headers:
         accessControlAllowOriginList:
-          - "*"
+          - "http://localhost:5173"
+          - "http://localhost:3000"
+          - "http://localhost:8090"
+          - "http://127.0.0.1:5173"
+          - "http://127.0.0.1:3000"
+          - "http://127.0.0.1:8090"
         accessControlAllowMethods:
           - GET
           - POST

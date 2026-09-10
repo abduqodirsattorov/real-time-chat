@@ -15,14 +15,17 @@ export class JwtAuthGuard implements CanActivate {
 
     let payload: any;
     try {
-      const secret = process.env.JWT_SECRET ?? 'dev_secret';
+      const secret = process.env.JWT_SECRET;
+      if (!secret || (secret === 'dev_secret' && process.env.NODE_ENV === 'production')) {
+        throw new Error('JWT_SECRET is required and must not be dev_secret');
+      }
       payload = jwt.verify(token, secret) as any;
     } catch {
       throw new UnauthorizedException();
     }
 
     req.user = payload;
-    if (payload?.sub) await assertAccountActive(this.prisma, payload.sub);
+    if (payload?.sub) await assertAccountActive(this.prisma, payload.sub, payload.role);
     return true;
   }
 }

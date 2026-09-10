@@ -1,0 +1,323 @@
+# ==============================================================================
+# Production Docker Compose Configuration (Fail-Closed & Hardened)
+#
+# Prerequisites:
+#   1. Set all required environment variables in your secure Vault/CI pipeline.
+#   2. Run: node scripts/validate-prod-secrets.js
+#   3. Deploy: docker compose -f docker-compose.prod.yml up -d
+# ==============================================================================
+
+networks:
+  nova-net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+  rabbitmq_data:
+  meili_data:
+  prom_data:
+  grafana_data:
+  loki_data:
+
+services:
+
+  # ─── Infrastructure ───────────────────────────────────────────────────────────
+
+  postgres:
+    image: timescale/timescaledb:2.15.3-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: always
+
+  redis:
+    image: redis:7.2.5-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    volumes:
+      - redis_data:/data
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: always
+
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MINIO_SERVER_URL: ${MINIO_PUBLIC_ENDPOINT:?MINIO_PUBLIC_ENDPOINT must be set}
+    volumes:
+      - minio_data:/data
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: always
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-06-12T00-33-00Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - nova-net
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/nova-media &&
+      mc mb --ignore-existing local/nova-recordings &&
+      mc anonymous set none local/nova-media &&
+      mc anonymous set none local/nova-recordings &&
+      echo 'MinIO private buckets configured successfully'
+      "
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER must be set}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: always
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.8
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY must be set}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meili_data:/meili_data
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  centrifugo:
+    image: centrifugo/centrifugo:v5
+    volumes:
+      - ./infra/centrifugo/config.json:/centrifugo/config.json:ro
+    command: centrifugo -c /centrifugo/config.json
+    environment:
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_HMAC_SECRET:?CENTRIFUGO_HMAC_SECRET must be set}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
+      CENTRIFUGO_PROXIES_0_KEY: ${CENTRIFUGO_WEBHOOK_SECRET:?CENTRIFUGO_WEBHOOK_SECRET must be set}
+      CENTRIFUGO_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    networks:
+      - nova-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: always
+
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--api.dashboard=false"
+    volumes:
+      - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - nova-net
+    restart: always
+
+  # ─── Microservices (Strict Non-Root node:node) ───────────────────────────────
+
+  auth-service:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
+      CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET:?CENTRIFUGO_WEBHOOK_SECRET must be set}
+      NOVA_SSO_SECRET: ${NOVA_SSO_SECRET:?NOVA_SSO_SECRET must be set}
+    networks:
+      - nova-net
+    restart: always
+
+  chat-service:
+    build:
+      context: ./services/chat
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
+      CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET:?CENTRIFUGO_WEBHOOK_SECRET must be set}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      NOVA_API_URL: ${NOVA_API_URL:?NOVA_API_URL must be set}
+      NOVA_API_KEY: ${NOVA_API_KEY:?NOVA_API_KEY must be set}
+      NOVA_HMAC_SECRET: ${NOVA_HMAC_SECRET:?NOVA_HMAC_SECRET must be set}
+    networks:
+      - nova-net
+    restart: always
+
+  presence-service:
+    build:
+      context: ./services/presence
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3003"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
+      CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET:?CENTRIFUGO_WEBHOOK_SECRET must be set}
+    networks:
+      - nova-net
+    restart: always
+
+  media-service:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3004"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?MINIO_PUBLIC_ENDPOINT must be set}
+      CLAMAV_ENABLED: "true"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+    networks:
+      - nova-net
+    restart: always
+
+  call-service:
+    build:
+      context: ./services/call
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3005"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set}
+      LIVEKIT_SECRET: ${LIVEKIT_SECRET:?LIVEKIT_SECRET must be set}
+      LIVEKIT_URL: ${LIVEKIT_URL:?LIVEKIT_URL must be set}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    networks:
+      - nova-net
+    restart: always
+
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3006"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    networks:
+      - nova-net
+    restart: always
+
+  recording-service:
+    build:
+      context: ./services/recording
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3007"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set}
+      LIVEKIT_SECRET: ${LIVEKIT_SECRET:?LIVEKIT_SECRET must be set}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    networks:
+      - nova-net
+    restart: always
+
+  bot-gateway:
+    build:
+      context: ./services/bot-gateway
+      dockerfile: Dockerfile
+    user: "node"
+    environment:
+      NODE_ENV: production
+      PORT: "3008"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    networks:
+      - nova-net
+    restart: always

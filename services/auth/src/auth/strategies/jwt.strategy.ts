@@ -7,6 +7,7 @@ export interface JwtPayload {
   role: string;
   locale: string;
   jti: string;
+  refreshJti?: string;
 }
 
 @Injectable()

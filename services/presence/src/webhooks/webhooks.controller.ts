@@ -12,9 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 @Controller('webhooks/centrifugo')
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
-  private readonly secret = process.env.CENTRIFUGO_WEBHOOK_SECRET
-    ?? process.env.CENTRIFUGO_API_KEY
-    ?? '';
+  private readonly secret = process.env.CENTRIFUGO_WEBHOOK_SECRET ?? '';
 
   constructor(
     private readonly presence: PresenceService,
@@ -24,7 +22,7 @@ export class WebhooksController {
   ) {}
 
   private verifySignature(rawBody: Buffer, signature: string): boolean {
-    if (!this.secret) return true; // skip if not configured
+    if (!this.secret || !signature) return false;
     const expected = crypto
       .createHmac('sha256', this.secret)
       .update(rawBody)
@@ -40,12 +38,12 @@ export class WebhooksController {
   @Post('connect')
   async onConnect(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('x-centrifugo-sign') signature: string,
     @Body() body: any,
   ) {
+    const signature = (req.headers['x-centrifugo-signature'] || req.headers['x-centrifugo-sign']) as string;
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(body));
-    if (signature && !this.verifySignature(rawBody, signature)) {
-      throw new UnauthorizedException('Invalid Centrifugo signature');
+    if (!signature || !this.verifySignature(rawBody, signature)) {
+      throw new UnauthorizedException('Invalid or missing Centrifugo signature');
     }
 
     const userId: string = body.user ?? body.data?.user;
@@ -70,12 +68,12 @@ export class WebhooksController {
   @Post('disconnect')
   async onDisconnect(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('x-centrifugo-sign') signature: string,
     @Body() body: any,
   ) {
+    const signature = (req.headers['x-centrifugo-signature'] || req.headers['x-centrifugo-sign']) as string;
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(body));
-    if (signature && !this.verifySignature(rawBody, signature)) {
-      throw new UnauthorizedException('Invalid Centrifugo signature');
+    if (!signature || !this.verifySignature(rawBody, signature)) {
+      throw new UnauthorizedException('Invalid or missing Centrifugo signature');
     }
 
     const userId: string = body.user ?? body.data?.user;

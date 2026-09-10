@@ -11,14 +11,12 @@ import { Public } from '../common/decorators/current-user.decorator';
 @Controller('webhooks/centrifugo')
 export class CentrifugoWebhookController {
   private readonly logger = new Logger(CentrifugoWebhookController.name);
-  private readonly secret = process.env.CENTRIFUGO_WEBHOOK_SECRET
-    ?? process.env.CENTRIFUGO_API_KEY
-    ?? '';
+  private readonly secret = process.env.CENTRIFUGO_WEBHOOK_SECRET ?? '';
 
   constructor(private readonly prisma: PrismaService) {}
 
   private verifySignature(rawBody: Buffer, signature: string): boolean {
-    if (!this.secret || !signature) return true;
+    if (!this.secret || !signature) return false;
     const expected = crypto
       .createHmac('sha256', this.secret)
       .update(rawBody)
@@ -37,12 +35,12 @@ export class CentrifugoWebhookController {
   @HttpCode(HttpStatus.OK)
   async onSubscribe(
     @Req() req: RawBodyRequest<Request>,
-    @Headers('x-centrifugo-sign') signature: string,
     @Body() body: any,
   ) {
+    const signature = (req.headers['x-centrifugo-signature'] || req.headers['x-centrifugo-sign']) as string;
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(body || {}));
-    if (signature && !this.verifySignature(rawBody, signature)) {
-      throw new UnauthorizedException('Invalid Centrifugo signature');
+    if (!signature || !this.verifySignature(rawBody, signature)) {
+      throw new UnauthorizedException('Invalid or missing Centrifugo signature');
     }
 
     const userId: string = body.user ?? body.data?.user;
@@ -138,18 +136,30 @@ export class CentrifugoWebhookController {
       });
 
       if (!call) {
-        if (isStaff) return { result: {} };
         return { error: { code: 1004, message: 'Call not found' } };
       }
 
       const isParticipant = call.callerId === userId || call.calleeId === userId;
-      if (isParticipant || isStaff) {
+      if (isParticipant) {
         return { result: {} };
+      }
+
+      if (isStaff) {
+        if (!call.productId || user.role === 'admin') {
+          return { result: {} };
+        }
+        const hasProductAccess = await this.prisma.operatorProduct.findFirst({
+          where: { userId, productId: call.productId },
+        });
+        if (hasProductAccess) {
+          return { result: {} };
+        }
       }
 
       return { error: { code: 1000, message: 'No access to call channel' } };
     }
 
-    return { result: {} };
+    this.logger.warn({ event: 'centrifugo_subscribe_unknown_channel_denied', userId, channel });
+    return { error: { code: 1000, message: 'Default deny: unknown channel pattern' } };
   }
 }

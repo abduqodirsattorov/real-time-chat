@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 import { applyHttpHardening } from './common/http-hardening';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   applyHttpHardening(app);
   app.enableShutdownHooks();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

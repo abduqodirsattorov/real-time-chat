@@ -7,6 +7,33 @@ import { UpsertCustomerDto, UpdateCustomerDto } from './dto/customers.dto';
 
 const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 
+function maskCustomerPii(customer: any, userRole: string): any {
+  if (!customer) return customer;
+  if (userRole === 'supervisor' || userRole === 'admin') return customer;
+
+  const result = { ...customer };
+  if (result.profileData && typeof result.profileData === 'object') {
+    const maskedData = { ...result.profileData };
+    for (const [key, val] of Object.entries(maskedData)) {
+      if (typeof val === 'string') {
+        const lower = key.toLowerCase();
+        if (lower.includes('passport') || lower.includes('doc_num')) {
+          maskedData[key] = val.length > 5 ? val.slice(0, 2) + '****' + val.slice(-3) : '****';
+        } else if (lower.includes('pan') || lower.includes('card')) {
+          const digits = val.replace(/\D/g, '');
+          maskedData[key] = digits.length >= 12 ? `${digits.slice(0, 4)} **** **** ${digits.slice(-4)}` : '****';
+        } else if (lower.includes('pinfl') || lower.includes('inn')) {
+          maskedData[key] = val.length > 4 ? val.slice(0, 2) + '******' + val.slice(-2) : '****';
+        } else if (lower.includes('birth') || lower.includes('dob')) {
+          maskedData[key] = val.length > 4 ? '****-**-' + val.slice(-2) : '****';
+        }
+      }
+    }
+    result.profileData = maskedData;
+  }
+  return result;
+}
+
 @Injectable()
 export class CustomersService {
   constructor(
@@ -54,7 +81,7 @@ export class CustomersService {
       payload: { roomId, customerId: room.customerId, productId: room.productId },
     });
 
-    return { ...customer, user: userInfo };
+    return maskCustomerPii({ ...customer, user: userInfo }, user.role);
   }
 
   // ── GET by uid ─────────────────────────────────────────────────────────────
@@ -73,7 +100,7 @@ export class CustomersService {
       payload: { productId, externalUid: uid },
     });
 
-    return customer;
+    return maskCustomerPii(customer, user.role);
   }
 
   // ── Upsert ─────────────────────────────────────────────────────────────────

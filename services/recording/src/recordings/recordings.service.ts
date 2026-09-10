@@ -109,6 +109,19 @@ export class RecordingsService {
   async getByCall(user: JwtUser, callId: string) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Ruxsat yo\'q');
 
+    const call = await this.prisma.call.findUnique({ where: { id: callId } });
+    if (!call) throw new NotFoundException('Qo\'ng\'iroq topilmadi');
+
+    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub;
+    if (user.role !== 'admin' && !isParticipant) {
+      if (call.productId) {
+        const allowed = await this.prisma.operatorProduct.findFirst({
+          where: { userId: user.sub, productId: call.productId },
+        });
+        if (!allowed) throw new ForbiddenException('Ushbu mahsulot yozuvlariga ruxsat yo\'q');
+      }
+    }
+
     const recordings = await this.prisma.recording.findMany({
       where: { callId },
       orderBy: { startedAt: 'desc' },

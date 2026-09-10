@@ -14,6 +14,7 @@ import { LiveKitService } from '../livekit/livekit.service';
 import { JwtUser } from '../common/decorators/current-user.decorator';
 import { InitiateCallDto, OutboundCallDto, TransferCallDto, HoldDto, MuteDto } from './calls.dto';
 import { CallStatus, TransferType, TransferStatus } from '@prisma/client';
+import { assertProductAccess, allowedProductIds } from '../common/product-access';
 
 const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 const CLAIM_TTL = 5;
@@ -145,7 +146,6 @@ export class CallsService {
       callId,
       operatorId: user.sub,
       livekitUrl: this.livekit.wsUrl,
-      callerToken,
       ts: new Date().toISOString(),
     });
 
@@ -176,29 +176,36 @@ export class CallsService {
     const finalStatus: CallStatus = call.status === 'ringing' ? 'no_answer' :
       call.status === 'queued' ? 'canceled' : 'completed';
 
-    await this.prisma.call.update({
-      where: { id: callId },
-      data: {
-        status: finalStatus,
-        hangupBy: user.sub,
-        hangupCause: cause ?? null,
-        endedAt: now,
-        talkDurationMs: talkMs,
-      },
+    const releaseIds = [call.callerId, call.calleeId].filter(Boolean) as string[];
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.call.update({
+        where: { id: callId },
+        data: {
+          status: finalStatus,
+          hangupBy: user.sub,
+          hangupCause: cause ?? null,
+          endedAt: now,
+          talkDurationMs: talkMs,
+        },
+      });
+
+      if (releaseIds.length > 0) {
+        await tx.operatorState.updateMany({
+          where: { userId: { in: releaseIds } },
+          data: { onCall: false },
+        });
+      }
     });
 
-    await this.livekit.destroyRoom(call.livekitRoom!);
+    try {
+      if (call.livekitRoom) await this.livekit.destroyRoom(call.livekitRoom);
+    } catch (err) {
+      this.logger.warn({ event: 'livekit_destroy_room_failed', room: call.livekitRoom, err: String(err) });
+    }
 
-    // Release onCall lock and claims for both caller and callee
-    const releaseIds = [call.callerId, call.calleeId].filter(Boolean) as string[];
-    if (releaseIds.length > 0) {
-      await this.prisma.operatorState.updateMany({
-        where: { userId: { in: releaseIds } },
-        data: { onCall: false },
-      });
-      for (const rid of releaseIds) {
-        await this.redis.del(`operator:claim:${rid}`);
-      }
+    for (const rid of releaseIds) {
+      await this.redis.del(`operator:claim:${rid}`);
     }
 
     await this.centrifugo.publish(`call:${callId}`, {
@@ -287,6 +294,10 @@ export class CallsService {
 
   async muteCall(user: JwtUser, callId: string, dto: MuteDto) {
     const call = await this.getCallOrThrow(callId);
+    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub || user.role === 'admin';
+    if (!isParticipant) {
+      throw new ForbiddenException('Faqat qo\'ng\'iroq ishtirokchilari ovozni o\'chira oladi');
+    }
     await this.livekit.mutePublishedTrack(call.livekitRoom!, user.sub, dto.muted);
     await this.centrifugo.publish(`call:${callId}`, { event: 'call.mute', callId, muted: dto.muted, userId: user.sub, ts: new Date().toISOString() });
     return { callId, muted: dto.muted };
@@ -319,15 +330,21 @@ export class CallsService {
   }
 
   private async executeColdTransfer(call: any, transfer: any, fromId: string, toId: string) {
-    await this.prisma.call.update({ where: { id: call.id }, data: { status: 'transferring', calleeId: toId } });
-    await this.livekit.removeParticipant(call.livekitRoom, fromId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.call.update({ where: { id: call.id }, data: { status: 'transferring', calleeId: toId } });
+      await tx.callTransfer.update({ where: { id: transfer.id }, data: { status: 'completed', completedAt: new Date() } });
+      await tx.call.update({ where: { id: call.id }, data: { status: 'connected' } });
+    });
+
+    try {
+      if (call.livekitRoom) await this.livekit.removeParticipant(call.livekitRoom, fromId);
+    } catch (err) {
+      this.logger.warn({ event: 'cold_transfer_remove_err', fromId, err: String(err) });
+    }
 
     await this.centrifugo.publishToUser(toId, 'call.transfer.incoming', {
       callId: call.id, fromOperatorId: fromId, livekitRoom: call.livekitRoom, ts: new Date().toISOString(),
     });
-
-    await this.prisma.callTransfer.update({ where: { id: transfer.id }, data: { status: 'completed', completedAt: new Date() } });
-    await this.prisma.call.update({ where: { id: call.id }, data: { status: 'connected' } });
 
     await this.rabbitmq.publish('call.transferred', {
       call_id: call.id, from_operator: fromId, to_operator: toId, type: 'cold', ts: Date.now(),
@@ -359,6 +376,7 @@ export class CallsService {
   }
 
   async completeWarmTransfer(user: JwtUser, callId: string) {
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar transferni yakunlay oladi');
     const call = await this.getCallOrThrow(callId);
     const transfer = await this.prisma.callTransfer.findFirst({
       where: { callId, status: 'consulting', type: 'warm' },
@@ -366,11 +384,16 @@ export class CallsService {
     });
     if (!transfer) throw new NotFoundException('Aktiv warm transfer topilmadi');
 
+    const isAuthorized = user.role === 'admin' || user.sub === transfer.fromOperator || user.sub === transfer.toOperator;
+    if (!isAuthorized) throw new ForbiddenException('Faqat transfer ishtirokchi operatori yakunlay oladi');
+
     await this.livekit.removeParticipant(call.livekitRoom!, transfer.fromOperator);
     await this.livekit.destroyRoom(`consult-${callId}`);
 
-    await this.prisma.call.update({ where: { id: callId }, data: { status: 'connected', calleeId: transfer.toOperator } });
-    await this.prisma.callTransfer.update({ where: { id: transfer.id }, data: { status: 'completed', completedAt: new Date() } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.call.update({ where: { id: callId }, data: { status: 'connected', calleeId: transfer.toOperator } });
+      await tx.callTransfer.update({ where: { id: transfer.id }, data: { status: 'completed', completedAt: new Date() } });
+    });
 
     await this.rabbitmq.publish('call.transferred', {
       call_id: callId, from_operator: transfer.fromOperator, to_operator: transfer.toOperator, type: 'warm', ts: Date.now(),
@@ -380,6 +403,7 @@ export class CallsService {
   }
 
   async cancelWarmTransfer(user: JwtUser, callId: string) {
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar transferni bekor qila oladi');
     const call = await this.getCallOrThrow(callId);
     const transfer = await this.prisma.callTransfer.findFirst({
       where: { callId, status: 'consulting', type: 'warm' },
@@ -387,9 +411,14 @@ export class CallsService {
     });
     if (!transfer) throw new NotFoundException('Aktiv warm transfer topilmadi');
 
+    const isAuthorized = user.role === 'admin' || user.sub === transfer.fromOperator || user.sub === transfer.toOperator;
+    if (!isAuthorized) throw new ForbiddenException('Faqat transfer ishtirokchi operatori bekor qila oladi');
+
     await this.livekit.destroyRoom(`consult-${callId}`);
-    await this.prisma.call.update({ where: { id: callId }, data: { status: 'connected' } });
-    await this.prisma.callTransfer.update({ where: { id: transfer.id }, data: { status: 'canceled', completedAt: new Date() } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.call.update({ where: { id: callId }, data: { status: 'connected' } });
+      await tx.callTransfer.update({ where: { id: transfer.id }, data: { status: 'canceled', completedAt: new Date() } });
+    });
 
     return { callId, transferId: transfer.id, status: 'canceled' };
   }
@@ -421,33 +450,39 @@ export class CallsService {
 
     await this.redis.set(`recording:consent:${recording.id}`, '1', 10);
 
-    // 10 second timeout — if no consent-ack, mark failed
-    setTimeout(async () => {
-      try {
-        const rec = await this.prisma.recording.findUnique({ where: { id: recording.id } });
-        if (rec && !rec.consentAnnounced && rec.status === 'starting') {
-          await this.prisma.recording.update({
-            where: { id: recording.id },
-            data: { status: 'failed', failedReason: 'consent_timeout' },
-          });
-          await this.redis.del(`recording:consent:${recording.id}`);
-          this.logger.warn({ event: 'recording_consent_timeout', recordingId: recording.id, callId });
-        }
-      } catch (err) {
+    // 10 second timeout check (safe unref timer)
+    const timer = setTimeout(() => {
+      this.handleRecordingConsentTimeout(recording.id, callId).catch((err) => {
         this.logger.error({ event: 'recording_timeout_error', recordingId: recording.id, err: String(err) });
-      }
+      });
     }, 10_000);
+    if (timer && typeof timer.unref === 'function') timer.unref();
 
     return { recordingId: recording.id, status: 'starting', consentAnnounced: false };
   }
 
+  private async handleRecordingConsentTimeout(recordingId: string, callId: string) {
+    const rec = await this.prisma.recording.findUnique({ where: { id: recordingId } });
+    if (rec && !rec.consentAnnounced && rec.status === 'starting') {
+      await this.prisma.recording.update({
+        where: { id: recordingId },
+        data: { status: 'failed', failedReason: 'consent_timeout' },
+      });
+      await this.redis.del(`recording:consent:${recordingId}`);
+      this.logger.warn({ event: 'recording_consent_timeout', recordingId, callId });
+    }
+  }
+
   async recordingConsentAck(user: JwtUser, callId: string, recordingId: string) {
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar rozilikni tasdiqlay oladi');
     const recording = await this.prisma.recording.findUnique({ where: { id: recordingId } });
     if (!recording || recording.callId !== callId) throw new NotFoundException('Recording topilmadi');
     if (recording.status !== 'starting') throw new BadRequestException('Recording holati noto\'g\'ri');
     if (recording.consentAnnounced) throw new ConflictException('Rozilik allaqachon tasdiqlangan');
 
     const call = await this.getCallOrThrow(callId);
+    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub || user.role === 'admin';
+    if (!isParticipant) throw new ForbiddenException('Faqat qo\'ng\'iroq ishtirokchisi bo\'lgan operator rozilik tasdiqlay oladi');
 
     await this.prisma.recording.update({
       where: { id: recordingId },
@@ -455,8 +490,11 @@ export class CallsService {
     });
 
     // Delegate Egress to recording-service
-    const recordingServiceUrl = process.env.RECORDING_SERVICE_URL ?? 'http://recording-service:3007';
-    const internalKey = process.env.INTERNAL_SERVICE_KEY ?? 'internal_service_default_secret_key';
+    const internalKey = process.env.INTERNAL_SERVICE_KEY;
+    if (!internalKey || internalKey === 'internal_service_default_secret_key') {
+      throw new Error('INTERNAL_SERVICE_KEY xavfsiz sozlanmagan (fail-closed)');
+    }
+    const recordingServiceUrl = process.env.RECORDING_SERVICE_URL || 'http://recording-service:3007';
     let egressId: string | null = null;
     let finalStatus = 'starting';
     try {
@@ -487,6 +525,11 @@ export class CallsService {
   }
 
   async stopRecording(user: JwtUser, callId: string) {
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar yozishni to\'xtata oladi');
+    const call = await this.getCallOrThrow(callId);
+    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub || user.role === 'admin';
+    if (!isParticipant) throw new ForbiddenException('Faqat qo\'ng\'iroq ishtirokchisi bo\'lgan operator yozishni to\'xtata oladi');
+
     const recording = await this.prisma.recording.findFirst({
       where: { callId, status: 'active' },
     });
@@ -515,13 +558,19 @@ export class CallsService {
       throw new ForbiddenException('Faqat operatorlar navbatni ko\'ra oladi');
     }
 
+    const allowed = await allowedProductIds(this.prisma, user);
+    const where: any = { direction: 'inbound', status: 'queued' };
+    if (allowed !== null) {
+      where.productId = { in: allowed };
+    }
+
     const calls = await this.prisma.call.findMany({
-      where: { direction: 'inbound', status: 'queued' },
+      where,
       orderBy: { initiatedAt: 'asc' },
       take: 50,
       select: {
         id: true, callerId: true, status: true, initiatedAt: true,
-        livekitRoom: true, metadata: true,
+        livekitRoom: true, metadata: true, productId: true,
       },
     });
 
@@ -557,6 +606,9 @@ export class CallsService {
     if (!isParticipant && !isStaff) {
       throw new ForbiddenException('Bu qo\'ng\'iroqqa ruxsatingiz yo\'q');
     }
+    if (isStaff && !isParticipant) {
+      await assertProductAccess(this.prisma, user, call.productId);
+    }
 
     return call;
   }
@@ -573,6 +625,9 @@ export class CallsService {
     if (!isParticipant && !isStaff) {
       this.logger.warn({ event: 'unauthorized_livekit_token_attempt', userId: user.sub, callId });
       throw new ForbiddenException('Bu qo\'ng\'iroq uchun LiveKit token olishga ruxsat yo\'q');
+    }
+    if (isStaff && !isParticipant) {
+      await assertProductAccess(this.prisma, user, call.productId);
     }
 
     const token = await this.livekit.generateToken(user.sub, call.livekitRoom);

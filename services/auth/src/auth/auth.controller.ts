@@ -73,7 +73,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   logout(@CurrentUser() user: JwtPayload) {
-    return this.authService.logout(user.sub, user.jti);
+    return this.authService.logout(user.sub, user.jti, user.refreshJti);
   }
 
   @Get('me')

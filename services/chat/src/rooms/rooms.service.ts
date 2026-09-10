@@ -9,6 +9,7 @@ import { JwtUser } from '../common/decorators/current-user.decorator';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { ListRoomsDto } from './dto/list-rooms.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
+import { assertProductAccess } from '../common/product-access';
 
 @Injectable()
 export class RoomsService {
@@ -251,8 +252,12 @@ export class RoomsService {
       select: { role: true },
     });
 
-    const isGlobalOperator = userRec && ['operator', 'supervisor', 'admin'].includes(userRec.role);
-    if (isGlobalOperator) return room;
+    if (userRec?.role === 'admin') return room;
+
+    if (userRec && ['operator', 'supervisor'].includes(userRec.role)) {
+      await assertProductAccess(this.prisma, { sub: userId, role: userRec.role } as any, room.productId);
+      return room;
+    }
 
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },

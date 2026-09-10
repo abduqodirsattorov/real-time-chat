@@ -1,4 +1,7 @@
-import { Controller, Post, Body, Headers, Logger, HttpCode, HttpStatus, RawBodyRequest, Req } from '@nestjs/common';
+import {
+  Controller, Post, Body, Headers, Logger, HttpCode, HttpStatus,
+  RawBodyRequest, Req, UnauthorizedException, BadRequestException,
+} from '@nestjs/common';
 import { RecordingsService } from '../recordings/recordings.service';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { Request } from 'express';
@@ -9,9 +12,14 @@ export class WebhooksController {
   private readonly receiver: WebhookReceiver;
 
   constructor(private readonly recordings: RecordingsService) {
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_SECRET;
+    if (process.env.NODE_ENV === 'production' && (!apiKey || !apiSecret)) {
+      throw new Error('LIVEKIT_API_KEY va LIVEKIT_SECRET production muhitida sozlanishi shart (fail-closed)');
+    }
     this.receiver = new WebhookReceiver(
-      process.env.LIVEKIT_API_KEY ?? 'devkey',
-      process.env.LIVEKIT_SECRET ?? 'devsecret_change_me_32_chars_minimum_xx',
+      apiKey ?? 'devkey',
+      apiSecret ?? 'devsecret_change_me_32_chars_minimum_xx',
     );
   }
 
@@ -22,13 +30,18 @@ export class WebhooksController {
     @Headers('authorization') authHeader: string,
     @Body() body: any,
   ) {
-    // Verify signature if raw body available, else log and process
+    if (!authHeader) {
+      this.logger.warn({ event: 'livekit_webhook_missing_auth' });
+      throw new UnauthorizedException('Missing LiveKit webhook authorization header');
+    }
+
+    const rawBody = req.rawBody?.toString() ?? JSON.stringify(body || {});
+    let eventData: any;
     try {
-      const rawBody = req.rawBody?.toString() ?? JSON.stringify(body);
-      await this.receiver.receive(rawBody, authHeader);
-    } catch {
-      // In dev with no signature, continue (warn only)
-      this.logger.warn({ event: 'webhook_sig_warn', body: JSON.stringify(body).slice(0, 100) });
+      eventData = await this.receiver.receive(rawBody, authHeader);
+    } catch (err) {
+      this.logger.error({ event: 'livekit_webhook_invalid_signature', err: String(err) });
+      throw new UnauthorizedException('Invalid LiveKit webhook signature');
     }
 
     const event = body?.event;

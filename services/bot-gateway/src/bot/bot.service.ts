@@ -244,6 +244,15 @@ export class BotService implements OnModuleInit {
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException('Xona topilmadi');
 
+    if (user.role !== 'admin' && (room as any).productId) {
+      const allowed = await this.prisma.operatorProduct.findFirst({
+        where: { userId: user.sub, productId: (room as any).productId },
+      });
+      if (!allowed) {
+        throw new ForbiddenException('Ushbu mahsulotga ruxsatingiz yo\'q');
+      }
+    }
+
     await this.escalateToOperator(roomId, 'manual_handoff');
     return { roomId, status: 'open', escalated: true };
   }

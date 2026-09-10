@@ -208,6 +208,7 @@ describe('RecordingsService', () => {
   });
 
   it('T16: getByCall returns recordings for operator', async () => {
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'call-1', callerId: 'op-1', calleeId: 'cust-1' });
     mockPrisma.recording.findMany.mockResolvedValue([{ id: 'rec-1' }, { id: 'rec-2' }]);
     const result = await service.getByCall(opUser, 'call-1');
     expect(result.recordings).toHaveLength(2);
