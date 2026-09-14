@@ -1,0 +1,81 @@
+REMEDIATION PLAN - DEVELOPER HANDOFF
+Updated: 2026-09-14
+Scope: current working tree, including uncommitted changes.
+Source of truth: docs/REMEDIATION_PLAN.md
+Historical audit: docs/REMEDIATION_AUDIT_HISTORY.md
+Status: all R01-R20 tasks below are OPEN; owners and target releases are unassigned.
+
+IMPLEMENTED BASELINE (NOT A PRODUCTION SIGN-OFF)
+Product/resource authorization, authentication hardening, internal recording-start auth, fail-closed raw-body checks, recordingId mapping and panel recovery, bounded/scanned upload confirmation, and the clean-database KPI initialization fix are implemented within the recorded verification scope.
+Last recorded checks: 8 panel tests plus build; 59 HTTP authorization/security tests; clean PostgreSQL initialization and SQL regression; component browser smoke at 1280/375 px with mocked HTTP.
+No new tests were run for this documentation update. Full CI, Flutter, real audio/Egress/consent playback, real ClamAV delivery and production networking remain unverified. The local stack needed a temporary MinIO image override.
+
+P0 RELEASE GATES (OPEN; COMPLETE BEFORE DEPLOYMENT)
+G01. Inventory and rotate affected deployed secrets; prove old credentials fail.
+G02. Revoke affected legacy tokens/sessions and disconnect existing realtime/LiveKit sessions as required.
+G03. Backfill reviewed tenant ownership and operator assignments; quarantine ambiguous legacy resources without weakening authorization.
+
+DEVELOPMENT TASKS
+Work in the order below, with release gates in parallel. Pull R17-R19 forward when they block R04-R06; maintain R20 continuously.
+
+1. Repair Outbound LiveKit Connection (P1, R01). The operator panel still waits for callerToken in call.connected even though the backend no longer broadcasts credentials.
+Fetch the participant token through the authenticated call endpoint when the call connects. Deduplicate connection attempts and discard late token responses after hangup or call replacement.
+
+2. Propagate and Reconcile Egress Failures (P1, R02). Egress stop errors are swallowed, while recording-start timeouts can leave an unknown remote outcome.
+Propagate stop failures without claiming a successful state transition and reconcile both start and stop outcomes against LiveKit. Make retries idempotent using the recording identity so an uncertain response cannot create duplicate recordings.
+
+3. Verify Actual Centrifugo Proxy Authentication (P1, R03). Directly signed HTTP tests do not establish that deployed Centrifugo sends authentication compatible with the protected proxy endpoints.
+Verify and align connect, subscribe and disconnect authentication for the deployed Centrifugo version in local and production configurations. Exercise actual WebSocket clients while preserving fail-closed checks, room membership and product isolation.
+
+4. Restore Reproducible Stack Image Availability (P1, R04). The default minio/minio:latest pull failed during verification and the successful local run required an uncommitted override.
+Select accessible, supported image sources and pin tested MinIO server/client versions or digests in maintained deployment configuration. Verify compatibility and pull the stack from a clean cache without relying on local images or temporary overrides.
+
+5. Complete Real Call and Recording Acceptance Tests (P1, R05). Passing component and HTTP authorization tests does not prove that real audio, consent playback and Egress recording work end to end.
+Run browser and Flutter call flows with real LiveKit, Egress and MinIO, including inbound/outbound calls, transfers, consent announcement and acknowledgment, stop, completion and authorized downloads. Cover denied access, disconnects and failure recovery, and make consent audio assets reachable without making media buckets public.
+
+6. Verify Real Antivirus and Private Media Delivery (P1, R06). Scanner protocol fixtures passed, but real ClamAV signatures and production-like private storage delivery were not exercised.
+Test clean files, a standard harmless antivirus test fixture, MIME mismatches, size limits and scanner outages against real ClamAV and MinIO. Verify original, thumbnail, voice and recording URL permissions through the public HTTPS storage endpoint.
+
+7. Establish a Single API Contract (P1, R07). Frontend request and response contracts remain handwritten and can drift despite the corrected recording ID mapping.
+Publish versioned OpenAPI contracts and generate clients or validate existing clients against those contracts, starting with calls and recordings. Specify realtime event payloads alongside HTTP contracts and add compatibility checks for both operator-panel and Flutter in CI.
+
+8. Persist Recording Consent Deadlines (P2, R08). Recording consent expiry still relies on an in-process setTimeout that does not survive restarts or coordinate replicas.
+Persist deadlines and process them through durable delayed jobs or a database sweeper. Use conditional state transitions so expiry cannot overwrite accepted consent or an active recording, and retry failed jobs safely.
+
+9. Make Call and Queue Transitions Atomic (P2, R09). Existing transactions and claim releases do not prove that competing answers, transfers, hangups and routing attempts preserve call ownership.
+Add conditional transitions, transactional queue assignment and ownership-aware claim release on every terminal or failure path. Reconcile external LiveKit operations with database state using idempotent actions and compensation where necessary.
+
+10. Finish Schema Ownership and Executable Migrations (P2, R10). A shared Prisma schema exists, but duplicated migration dumps contain psql commands and deployment does not demonstrate a single reliable migration path.
+Define one migration owner for the shared database and generate or synchronize service schemas from the canonical source. Replace dump-based baselines with validated migrations and a baseline procedure for existing databases, then test both fresh installs and upgrades including SQL views and TimescaleDB objects.
+
+11. Centralize Authorization and Tenant Policies (P2, R11). Corrected access checks are still duplicated and can diverge when new endpoints or roles are added.
+Extract shared role and resource policies and a server-validated product-scope resolver for tenant-bound operations. Preserve explicit admin and active-membership rules from AUTHORIZATION.md, and keep header omission or null products from granting staff access.
+
+12. Consolidate Shared Infrastructure Modules (P2, R12). Prisma, Redis, RabbitMQ, JWT and HTTP-hardening implementations remain duplicated across services.
+Extract shared configuration validation and infrastructure modules incrementally using the existing service interfaces. Preserve startup failure behavior, account revocation, connection cleanup and service-specific settings with regression tests.
+
+13. Complete Strict Request Validation (P2, R13). Notification and bot-gateway still omit forbidNonWhitelisted while the other six services reject unexpected fields.
+Enable strict validation in the remaining services and check their DTOs and existing producers for incompatible payloads. Add request-level tests for unknown properties, invalid enums, identifiers and numeric bounds across all services.
+
+14. Finish Media Lifecycle and Worker Limits (P3, R14). Abandoned staging objects, previously stored unscanned media and thumbnail processing remain outside the completed upload-confirmation hardening.
+Add storage lifecycle cleanup and a quarantine or rescan policy for legacy objects. Bound thumbnail and derivative processing by size, memory, duration and concurrency, and retain attachment authorization on every derived asset.
+
+15. Audit Remaining Sensitive Logging (P3, R15). OTP removal and existing redaction do not establish consistent handling of PII, credentials and upstream error payloads across all services.
+Inventory structured logs, request serializers, errors and response fields and standardize redaction and data minimization. Add tests for tokens, internal keys, phone numbers and nested upstream errors without removing necessary audit events.
+
+16. Validate Production Network and Runtime Boundaries (P3, R16). Local infrastructure defaults and externally deployed LiveKit and storage endpoints are not a verified production deployment boundary.
+Validate private routing, exact CORS origins, TLS, storage signing hostnames and restricted admin/metrics exposure in the deployment environment. Retain existing non-root service users and review remaining images, filesystem permissions and mounted credentials.
+
+17. Lock Dependency and Container Builds (P4, R17). Service and panel Dockerfiles still use npm install rather than the committed lockfiles.
+Copy lockfiles and use npm ci in build stages, producing the intended production dependency set without disabling required generation steps. Pin base images, review required lifecycle scripts and triage dependency findings with explicit owners instead of unreviewed bulk upgrades.
+
+18. Complete Reliable CI and Regression Coverage (P4, R18). CI jobs exist, but a full clean-run pipeline and all user-facing workflows have not been verified, and some integration tests can pass without exercising authenticated flows.
+Make test setup and service readiness deterministic, require authenticated fixtures for workflow suites and retain separate unauthenticated denial tests. Run builds, typechecks, unit, contract, SQL, authorization and selected real dependency scenarios with failure artifacts and retained browser tests.
+
+19. Gate Readiness on Usable Dependencies and Schema (P4, R19). The fresh-deployment failure showed that a healthy database process can coexist with an incomplete application schema.
+Separate liveness from readiness and include migration/schema completion plus the dependencies required by each service. Make startup and CI waits fail with diagnostics when those prerequisites are unavailable rather than accepting a process-only health signal.
+
+20. Maintain Ownership, Runbooks and Evidence (P5, R20). Historical status claims and plans have drifted from implementation and do not provide release ownership or complete operational procedures.
+Track these stable task IDs with an owner, target release, dependencies and links to passing acceptance evidence. Keep architecture, authorization, internal endpoint trust, key rotation, migration/recovery and test runbooks aligned with implementation; treat historical test totals as historical.
+
+Acceptance criteria and code scopes for each ID are in docs/REMEDIATION_PLAN.md. Mark completion only with linked test evidence; do not treat mock-based tests or a partial pipeline as a production acceptance result.

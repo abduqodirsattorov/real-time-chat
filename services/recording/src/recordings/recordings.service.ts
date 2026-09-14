@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
@@ -11,7 +12,6 @@ import { LiveKitEgressService } from '../livekit/livekit-egress.service';
 import { MinioService } from '../minio/minio.service';
 import { JwtUser } from '../common/decorators/current-user.decorator';
 
-const PRIVILEGED_ROLES = new Set(['admin', 'supervisor']);
 const OPERATOR_ROLES = new Set(['operator', 'supervisor', 'admin']);
 
 @Injectable()
@@ -31,17 +31,30 @@ export class RecordingsService {
   async start(dto: { recordingId: string; callId: string; livekitRoom: string }) {
     const recording = await this.prisma.recording.findUnique({ where: { id: dto.recordingId } });
     if (!recording) throw new NotFoundException('Recording topilmadi');
+    if (recording.callId !== dto.callId) throw new BadRequestException('Recording does not belong to this call');
     if (!recording.consentAnnounced) throw new BadRequestException('Consent tasdiqlanmagan — Egress boshlanmaydi');
     if (recording.status !== 'starting') throw new BadRequestException(`Recording holati: ${recording.status}`);
+    const call = await this.prisma.call.findUnique({ where: { id: recording.callId } });
+    if (!call || call.livekitRoom !== dto.livekitRoom) throw new BadRequestException('LiveKit room does not match the call');
 
     const storageKey = this.minio.storageKey(dto.callId);
-    const egressId = await this.egress.startRoomEgress(dto.callId, dto.livekitRoom);
+    let egressId: string;
+    try {
+      egressId = await this.egress.startRoomEgress(dto.callId, dto.livekitRoom);
+      if (!egressId) throw new Error('Missing Egress ID');
+    } catch {
+      await this.prisma.recording.update({
+        where: { id: dto.recordingId },
+        data: { status: 'failed', failedReason: 'egress_start_failed' },
+      });
+      throw new ServiceUnavailableException('LiveKit Egress is unavailable');
+    }
 
     const updated = await this.prisma.recording.update({
       where: { id: dto.recordingId },
       data: {
-        status: egressId ? 'active' : 'starting',
-        egressId: egressId ?? null,
+        status: 'active',
+        egressId,
         storageKey,
       },
     });
@@ -81,7 +94,7 @@ export class RecordingsService {
     });
     if (!recording) throw new NotFoundException('Recording topilmadi');
 
-    this.assertAccess(user, recording);
+    await this.assertAccess(user, recording);
 
     // Audit log
     await this.prisma.auditLog.create({
@@ -114,6 +127,7 @@ export class RecordingsService {
 
     const isParticipant = call.callerId === user.sub || call.calleeId === user.sub;
     if (user.role !== 'admin' && !isParticipant) {
+      if (!call.productId) throw new ForbiddenException('Product scope is required');
       if (call.productId) {
         const allowed = await this.prisma.operatorProduct.findFirst({
           where: { userId: user.sub, productId: call.productId },
@@ -188,13 +202,20 @@ export class RecordingsService {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  private assertAccess(user: JwtUser, recording: any) {
-    if (PRIVILEGED_ROLES.has(user.role)) return;
+  private async assertAccess(user: JwtUser, recording: any) {
+    if (user.role === 'admin') return;
+    if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
 
     const isCallOperator = recording.call?.calleeId === user.sub;
     const isStartedBy = recording.startedBy === user.sub;
 
     if (!isCallOperator && !isStartedBy) {
+      if (user.role === 'supervisor' && recording.call?.productId) {
+        const access = await this.prisma.operatorProduct.findFirst({
+          where: { userId: user.sub, productId: recording.call.productId },
+        });
+        if (access) return;
+      }
       this.logger.warn({ event: 'recording_access_denied', userId: user.sub, recordingId: recording.id });
       throw new ForbiddenException('Bu yozuvga kirish huquqi yo\'q');
     }

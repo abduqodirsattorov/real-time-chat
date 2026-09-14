@@ -9,6 +9,9 @@ export const useCallsStore = defineStore('calls', () => {
   const incomingCall = ref<Call | null>(null);
   const activeCall = ref<Call | null>(null);
   const activeRecording = ref<Recording | null>(null);
+  const recordingBusy = ref(false);
+  const recordingError = ref<string | null>(null);
+  const recordingNeedsSync = ref(false);
   const livekitRoom = ref<LiveKitRoom | null>(null);
   const isOnHold = ref(false);
   const isMuted = ref(false);
@@ -31,6 +34,8 @@ export const useCallsStore = defineStore('calls', () => {
         if (activeCall.value?.id === callId) {
           activeCall.value = null;
           activeRecording.value = null;
+          recordingError.value = null;
+          recordingNeedsSync.value = false;
           isOnHold.value = false;
           isMuted.value = false;
           disconnectLiveKit();
@@ -98,6 +103,8 @@ export const useCallsStore = defineStore('calls', () => {
     const callId = activeCall.value.id;
     activeCall.value = null;
     activeRecording.value = null;
+    recordingError.value = null;
+    recordingNeedsSync.value = false;
     isOnHold.value = false;
     isMuted.value = false;
     await disconnectLiveKit();
@@ -129,24 +136,75 @@ export const useCallsStore = defineStore('calls', () => {
     }
   }
 
-  async function startRecording() {
-    if (!activeCall.value) return;
-    const rec = await callsApi.startRecording(activeCall.value.id);
-    activeRecording.value = rec;
-  }
-
-  async function consentAck() {
-    if (!activeCall.value || !activeRecording.value) return;
-    const res = await callsApi.consentAck(activeCall.value.id, activeRecording.value.id);
-    if (activeRecording.value) {
-      activeRecording.value.status = res.status;
+  async function syncRecording(callId: string) {
+    try {
+      const recordings = await callsApi.getRecordings(callId);
+      if (activeCall.value?.id !== callId) return;
+      activeRecording.value = recordings.find(rec => ['starting', 'active'].includes(rec.status)) ?? null;
+      recordingNeedsSync.value = false;
+    } catch {
+      if (activeCall.value?.id === callId) recordingNeedsSync.value = true;
     }
   }
 
+  async function refreshRecording() {
+    if (!activeCall.value || recordingBusy.value) return;
+    const callId = activeCall.value.id;
+    recordingBusy.value = true;
+    try {
+      await syncRecording(callId);
+      if (activeCall.value?.id === callId && !recordingNeedsSync.value) recordingError.value = null;
+    } finally {
+      recordingBusy.value = false;
+    }
+  }
+
+  async function recordingAction(action: () => Promise<void>, errorKey: string) {
+    if (!activeCall.value || recordingBusy.value || recordingNeedsSync.value) return;
+    const callId = activeCall.value.id;
+    recordingBusy.value = true;
+    recordingError.value = null;
+    try {
+      await action();
+    } catch {
+      if (activeCall.value?.id !== callId) return;
+      recordingError.value = errorKey;
+      // A failed HTTP response does not prove the server did not start recording.
+      await syncRecording(callId);
+    } finally {
+      recordingBusy.value = false;
+    }
+  }
+
+  async function startRecording() {
+    if (!activeCall.value || activeRecording.value) return;
+    const callId = activeCall.value.id;
+    await recordingAction(async () => {
+      const rec = await callsApi.startRecording(callId);
+      if (activeCall.value?.id === callId) activeRecording.value = rec;
+    }, 'call.recordingStartFailed');
+  }
+
+  async function consentAck() {
+    const rec = activeRecording.value;
+    if (!activeCall.value || !rec || rec.status !== 'starting' || rec.consentAnnounced) return;
+    const callId = activeCall.value.id;
+    await recordingAction(async () => {
+      const result = await callsApi.consentAck(callId, rec.id);
+      if (activeCall.value?.id === callId && activeRecording.value?.id === rec.id) {
+        activeRecording.value = { ...rec, status: result.status, consentAnnounced: true, egressId: result.egressId };
+      }
+    }, 'call.recordingConsentFailed');
+  }
+
   async function stopRecording() {
-    if (!activeCall.value || !activeRecording.value) return;
-    await callsApi.stopRecording(activeCall.value.id, activeRecording.value.id);
-    activeRecording.value = null;
+    const rec = activeRecording.value;
+    if (!activeCall.value || !rec || rec.status !== 'active') return;
+    const callId = activeCall.value.id;
+    await recordingAction(async () => {
+      await callsApi.stopRecording(callId);
+      if (activeCall.value?.id === callId && activeRecording.value?.id === rec.id) activeRecording.value = null;
+    }, 'call.recordingStopFailed');
   }
 
   async function startOutbound(calleeId: string) {
@@ -192,6 +250,10 @@ export const useCallsStore = defineStore('calls', () => {
     incomingCall,
     activeCall,
     activeRecording,
+    recordingBusy,
+    recordingError,
+    recordingNeedsSync,
+    refreshRecording,
     livekitRoom,
     isOnHold,
     isMuted,

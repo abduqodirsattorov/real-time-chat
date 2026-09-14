@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import * as Minio from 'minio';
+import { Readable } from 'stream';
 
 const BUCKET = 'nova-media';
 const PRESIGN_TTL = 3600; // 1 hour
@@ -62,6 +63,14 @@ export class MinioService implements OnModuleInit {
       stream.on('end', () => resolve(Buffer.concat(chunks)));
       stream.on('error', reject);
     });
+  }
+
+  async getObjectStream(storageKey: string): Promise<Readable> {
+    return this.client.getObject(BUCKET, storageKey);
+  }
+
+  async putFile(storageKey: string, filePath: string, mimeType: string): Promise<void> {
+    await this.client.fPutObject(BUCKET, storageKey, filePath, { 'Content-Type': mimeType });
   }
 
   async putObject(storageKey: string, data: Buffer, mimeType: string): Promise<void> {

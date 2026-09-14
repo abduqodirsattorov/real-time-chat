@@ -305,6 +305,8 @@ services:
       context: ./services/media
       dockerfile: Dockerfile
     environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      CLAMAV_ENABLED: ${CLAMAV_ENABLED:-false}
       DATABASE_URL: postgresql://${POSTGRES_USER:-nova}:${POSTGRES_PASSWORD:-nova_dev_pass}@postgres:5432/${POSTGRES_DB:-nova_chat}
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-nova}:${RABBITMQ_PASS:-nova_dev_pass}@rabbitmq:5672

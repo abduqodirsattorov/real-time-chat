@@ -9,6 +9,7 @@ import axios from 'axios';
 import * as http from 'http';
 import * as https from 'https';
 import { execSync } from 'child_process';
+import { resolve } from 'path';
 
 const noKeepAliveHttp = new http.Agent({ keepAlive: false });
 const noKeepAliveHttps = new https.Agent({ keepAlive: false });
@@ -17,7 +18,7 @@ axios.defaults.httpsAgent = noKeepAliveHttps;
 
 export const BASE = process.env.BASE_URL ?? 'http://localhost:80/api/v1';
 export const PROJECT_DIR =
-  process.env.PROJECT_DIR ?? 'C:\\Users\\abduq\\OneDrive\\Documents\\real-time-chat';
+  process.env.PROJECT_DIR ?? resolve(__dirname, '../..');
 
 export const DEFAULT_PRODUCT_ID = '00000000-0000-0000-0000-000000000002';
 export const ADMIN_EMAIL = 'admin@pusher.uz';

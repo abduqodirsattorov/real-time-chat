@@ -314,9 +314,9 @@ export class AuthService {
       if (room.members.length > 0) {
         hasAccess = true;
       } else if (isStaff) {
-        if (!room.productId || user.role === 'admin') {
+        if (user.role === 'admin') {
           hasAccess = true;
-        } else {
+        } else if (room.productId) {
           const hasProductAccess = await this.prisma.operatorProduct.findFirst({
             where: { userId, productId: room.productId },
           });
@@ -353,7 +353,8 @@ export class AuthService {
         if (!isStaff) {
           throw new ForbiddenException('Qo\'ng\'iroq kanaliga ruxsat yo\'q');
         }
-        if (call.productId && user.role !== 'admin') {
+        if (user.role !== 'admin') {
+          if (!call.productId) throw new ForbiddenException('Product scope is required');
           const hasProductAccess = await this.prisma.operatorProduct.findFirst({
             where: { userId, productId: call.productId },
           });

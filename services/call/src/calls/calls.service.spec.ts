@@ -5,7 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { CentrifugoService } from '../centrifugo/centrifugo.service';
 import { LiveKitService } from '../livekit/livekit.service';
-import { NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
 
 const mockPrisma = {
   call: {
@@ -32,6 +32,7 @@ const mockPrisma = {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
   },
   operatorState: {
     findMany: jest.fn(),
@@ -44,6 +45,7 @@ const mockPrisma = {
     findUnique: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
   },
+  operatorProduct: { findFirst: jest.fn(), findMany: jest.fn() },
   $transaction: jest.fn().mockImplementation((arg: any) => Array.isArray(arg) ? Promise.all(arg) : (typeof arg === 'function' ? arg(mockPrisma) : arg)),
 };
 
@@ -73,6 +75,11 @@ describe('CallsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPrisma.operatorProduct.findFirst.mockResolvedValue({ productId: 'product-a' });
+    mockPrisma.operatorProduct.findMany.mockResolvedValue([{ productId: 'product-a' }]);
+    mockPrisma.operatorState.findFirst.mockResolvedValue(null);
+    mockPrisma.operatorState.findUnique.mockResolvedValue({ currentProductId: 'product-a', onCall: false });
+    mockPrisma.user.findUnique.mockResolvedValue({ role: 'operator', status: 'active' });
     process.env.INTERNAL_SERVICE_KEY = 'test_internal_service_key_for_unit_testing';
     global.fetch = jest.fn();
     const module = await Test.createTestingModule({
@@ -98,7 +105,7 @@ describe('CallsService', () => {
     mockRabbitmq.publish.mockResolvedValue(undefined);
     mockCentrifugo.playAudioToCall.mockResolvedValue(undefined);
 
-    const result = await service.initiateCall(customerUser, {});
+    const result = await service.initiateCall(customerUser, { productId: 'product-a' });
     expect(result.status).toBe('queued');
     expect(mockPrisma.callQueue.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ callId: 'call-1' }) }));
     expect(mockRabbitmq.publish).toHaveBeenCalledWith('call.initiated', expect.objectContaining({ status: 'queued' }));
@@ -112,7 +119,7 @@ describe('CallsService', () => {
     mockCentrifugo.publishToUser.mockResolvedValue(undefined);
     mockRabbitmq.publish.mockResolvedValue(undefined);
 
-    const result = await service.initiateCall(customerUser, {});
+    const result = await service.initiateCall(customerUser, { productId: 'product-a' });
     expect(result.status).toBe('ringing');
     expect(mockCentrifugo.publishToUser).toHaveBeenCalledWith('op-1', 'call.incoming', expect.any(Object));
   });
@@ -127,7 +134,7 @@ describe('CallsService', () => {
     mockRabbitmq.publish.mockResolvedValue(undefined);
     mockCentrifugo.playAudioToCall.mockResolvedValue(undefined);
 
-    const result = await service.initiateCall(customerUser, {});
+    const result = await service.initiateCall(customerUser, { productId: 'product-a' });
     expect(result.status).toBe('queued');
   });
 
@@ -140,7 +147,7 @@ describe('CallsService', () => {
     mockRabbitmq.publish.mockResolvedValue(undefined);
     mockCentrifugo.playAudioToCall.mockResolvedValue(undefined);
 
-    const result = await service.initiateCall(customerUser, {});
+    const result = await service.initiateCall(customerUser, { productId: 'product-a' });
     expect(result.status).toBe('queued');
   });
 
@@ -233,7 +240,7 @@ describe('CallsService', () => {
   // ── Recording consent flow ────────────────────────────────────────────────────
 
   it('T13: startRecording creates record with consentAnnounced=false', async () => {
-    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', status: 'connected', metadata: { locale: 'uz' } });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', calleeId: 'op-1', status: 'connected', metadata: { locale: 'uz' } });
     mockPrisma.recording.findFirst.mockResolvedValue(null);
     mockPrisma.recording.create.mockResolvedValue({ id: 'rec-1', consentAnnounced: false, status: 'starting', startedAt: new Date(), callId: 'c1' });
     mockCentrifugo.playAudioToCall.mockResolvedValue(undefined);
@@ -271,12 +278,27 @@ describe('CallsService', () => {
     await expect(service.recordingConsentAck(operatorUser, 'c1', 'rec-1')).rejects.toThrow(ConflictException);
   });
 
+  it.each(['http-error', 'offline', 'missing-egress'])('recording consent reports an Egress start failure: %s', async failure => {
+    mockPrisma.recording.findUnique.mockResolvedValue({ id: 'rec-1', callId: 'c1', status: 'starting', consentAnnounced: false });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', calleeId: operatorUser.sub, livekitRoom: 'room-1' });
+    if (failure === 'offline') (global.fetch as jest.Mock).mockRejectedValue(new Error('Connection refused'));
+    else (global.fetch as jest.Mock).mockResolvedValue({
+      ok: failure !== 'http-error', status: 503,
+      json: async () => ({ status: 'starting', egressId: null }),
+    });
+    await expect(service.recordingConsentAck(operatorUser, 'c1', 'rec-1')).rejects.toThrow(ServiceUnavailableException);
+    expect(mockPrisma.recording.updateMany).toHaveBeenCalledWith({
+      where: { id: 'rec-1', status: 'starting', egressId: null }, data: { status: 'failed', failedReason: 'egress_start_failed' },
+    });
+    expect(mockRabbitmq.publish).not.toHaveBeenCalled();
+  });
+
   it('T16: startRecording forbidden for customer', async () => {
     await expect(service.startRecording(customerUser, 'c1')).rejects.toThrow(ForbiddenException);
   });
 
   it('T17: startRecording fails on non-connected call', async () => {
-    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', status: 'queued', metadata: {} });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', calleeId: 'op-1', status: 'queued', metadata: {} });
     await expect(service.startRecording(operatorUser, 'c1')).rejects.toThrow(BadRequestException);
   });
 
@@ -300,7 +322,7 @@ describe('CallsService', () => {
   });
 
   it('T20: cold transfer disconnects operator A and notifies B', async () => {
-    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', status: 'connected', calleeId: 'op-1', callerId: 'cust-1', livekitRoom: 'room-1' });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', productId: 'product-a', status: 'connected', calleeId: 'op-1', callerId: 'cust-1', livekitRoom: 'room-1' });
     mockPrisma.callTransfer.create.mockResolvedValue({ id: 'tr-1', callId: 'c1', fromOperator: 'op-1', toOperator: 'op-2', type: 'cold', status: 'initiated', consultRoom: null });
     mockPrisma.call.update.mockResolvedValue({});
     mockLivekit.removeParticipant.mockResolvedValue(undefined);
@@ -316,7 +338,7 @@ describe('CallsService', () => {
   });
 
   it('T21: warm transfer creates consult room and sets call on_hold', async () => {
-    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', status: 'connected', calleeId: 'op-1', callerId: 'cust-1', livekitRoom: 'room-1' });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', productId: 'product-a', status: 'connected', calleeId: 'op-1', callerId: 'cust-1', livekitRoom: 'room-1' });
     mockPrisma.callTransfer.create.mockResolvedValue({ id: 'tr-1', callId: 'c1', fromOperator: 'op-1', toOperator: 'op-2', type: 'warm', status: 'initiated', consultRoom: 'consult-c1' });
     mockLivekit.createRoom.mockResolvedValue(undefined);
     mockPrisma.call.update.mockResolvedValue({});
@@ -332,7 +354,7 @@ describe('CallsService', () => {
   });
 
   it('T22: completeWarmTransfer removes A and promotes B', async () => {
-    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', status: 'on_hold', calleeId: 'op-1', callerId: 'cust-1', livekitRoom: 'room-1' });
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'c1', productId: 'product-a', status: 'on_hold', calleeId: 'op-1', callerId: 'cust-1', livekitRoom: 'room-1' });
     mockPrisma.callTransfer.findFirst.mockResolvedValue({ id: 'tr-1', callId: 'c1', fromOperator: 'op-1', toOperator: 'op-2', type: 'warm', status: 'consulting' });
     mockLivekit.removeParticipant.mockResolvedValue(undefined);
     mockLivekit.destroyRoom.mockResolvedValue(undefined);
@@ -370,5 +392,107 @@ describe('CallsService', () => {
     const result = await service.getCalls(customerUser, 20, 0);
     expect(result.total).toBe(1);
     expect(result.calls).toHaveLength(1);
+  });
+
+  describe('authorization regressions', () => {
+    const foreignCall = {
+      id: 'foreign-call', callerId: 'other-customer', calleeId: 'other-operator',
+      productId: 'product-b', status: 'connected', livekitRoom: 'foreign-room',
+    };
+
+    it.each(['customer', 'operator', 'supervisor'])('denies hangup by an unrelated %s before any side effects', async role => {
+      for (const status of ['connected', 'completed']) {
+        mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, status });
+        await expect(service.hangupCall({ ...operatorUser, role }, foreignCall.id)).rejects.toThrow(ForbiddenException);
+      }
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockLivekit.destroyRoom).not.toHaveBeenCalled();
+      expect(mockCentrifugo.publish).not.toHaveBeenCalled();
+    });
+
+    it.each(['operator', 'supervisor'])('denies recording and transfer by an unrelated %s even within the same product', async role => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, productId: 'product-a' });
+      const user = { ...operatorUser, role };
+      await expect(service.startRecording(user, foreignCall.id)).rejects.toThrow(ForbiddenException);
+      await expect(service.transferCall(user, foreignCall.id, { type: 'cold', toOperatorId: 'op-2' })).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.recording.create).not.toHaveBeenCalled();
+      expect(mockPrisma.callTransfer.create).not.toHaveBeenCalled();
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
+    it.each(['product-b', null])('denies staff access to unrelated call details with product %s', async productId => {
+      mockPrisma.operatorProduct.findFirst.mockResolvedValue(null);
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, productId });
+      await expect(service.getCall(operatorUser, foreignCall.id)).rejects.toThrow(ForbiddenException);
+    });
+
+    it.each(['product-a', 'product-b', null])('never issues LiveKit tokens to unrelated operators for product %s', async productId => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, productId });
+      await expect(service.getLivekitToken(operatorUser, foreignCall.id)).rejects.toThrow(ForbiddenException);
+      expect(mockLivekit.generateToken).not.toHaveBeenCalled();
+    });
+
+    it('preserves call access and tokens for direct participants of an unscoped call', async () => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, callerId: customerUser.sub, productId: null });
+      await expect(service.getCall(customerUser, foreignCall.id)).resolves.toHaveProperty('id', foreignCall.id);
+      await expect(service.getLivekitToken(customerUser, foreignCall.id)).resolves.toHaveProperty('token', 'mock-token');
+      expect(mockLivekit.generateToken).toHaveBeenCalledWith(customerUser.sub, foreignCall.livekitRoom);
+    });
+
+    it.each(['cold', 'warm'] as const)('rejects a %s transfer to an operator in another product', async type => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, calleeId: operatorUser.sub, productId: 'product-a' });
+      mockPrisma.operatorProduct.findFirst.mockImplementation(async ({ where }) => where.userId === operatorUser.sub ? { productId: 'product-a' } : null);
+      await expect(service.transferCall(operatorUser, foreignCall.id, { type, toOperatorId: 'op-2' })).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.callTransfer.create).not.toHaveBeenCalled();
+      expect(mockLivekit.createRoom).not.toHaveBeenCalled();
+    });
+
+    it.each([{ role: 'customer', status: 'active' }, { role: 'operator', status: 'suspended' }])('rejects an ineligible transfer target: %j', async target => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, calleeId: operatorUser.sub, productId: 'product-a' });
+      mockPrisma.user.findUnique.mockResolvedValue(target);
+      await expect(service.transferCall(operatorUser, foreignCall.id, { type: 'warm', toOperatorId: 'op-2' })).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.callTransfer.create).not.toHaveBeenCalled();
+    });
+
+    it('rechecks target product access when completing a warm transfer', async () => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, calleeId: operatorUser.sub, productId: 'product-a' });
+      mockPrisma.callTransfer.findFirst.mockResolvedValue({ fromOperator: operatorUser.sub, toOperator: 'op-2' });
+      mockPrisma.operatorProduct.findFirst.mockImplementation(async ({ where }) => where.userId === operatorUser.sub ? {} : null);
+      await expect(service.completeWarmTransfer(operatorUser, foreignCall.id)).rejects.toThrow(ForbiddenException);
+      expect(mockLivekit.removeParticipant).not.toHaveBeenCalled();
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects outbound calls with an unassigned current product', async () => {
+      mockPrisma.operatorProduct.findFirst.mockResolvedValue(null);
+      await expect(service.outboundCall(operatorUser, { calleeId: 'customer-b' })).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.call.create).not.toHaveBeenCalled();
+    });
+
+    it('scopes queue routing after hangup to the current assigned product', async () => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, calleeId: operatorUser.sub });
+      mockPrisma.operatorState.findFirst.mockResolvedValue({ currentProductId: 'product-a', onCall: false });
+      mockPrisma.callQueue.findFirst.mockResolvedValue(null);
+      await service.hangupCall(operatorUser, foreignCall.id);
+      expect(mockPrisma.callQueue.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+        where: { assignedAt: null, call: { status: 'queued', productId: 'product-a' } },
+      }));
+    });
+
+    it('does not route the queue to an operator whose product access was revoked', async () => {
+      mockPrisma.call.findUnique.mockResolvedValue({ ...foreignCall, calleeId: operatorUser.sub });
+      mockPrisma.operatorState.findFirst.mockResolvedValue({ currentProductId: 'product-a' });
+      mockPrisma.operatorProduct.findFirst.mockResolvedValue(null);
+      await service.hangupCall(operatorUser, foreignCall.id);
+      expect(mockPrisma.callQueue.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.callQueue.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects productless inbound calls before creating or routing them', async () => {
+      await expect(service.initiateCall(customerUser, {} as any)).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.call.create).not.toHaveBeenCalled();
+      expect(mockPrisma.operatorState.findMany).not.toHaveBeenCalled();
+      expect(mockCentrifugo.publishToUser).not.toHaveBeenCalled();
+    });
   });
 });

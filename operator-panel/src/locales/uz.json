@@ -43,6 +43,10 @@
     "recording": "Yozib olish",
     "stopRecording": "To'xtatish",
     "consentAck": "Rozilikni tasdiqlash",
+    "refreshRecording": "Yozuv holatini tekshirish",
+    "recordingStartFailed": "Yozuv boshlanganini tasdiqlab bo'lmadi. Holatini tekshiring.",
+    "recordingConsentFailed": "Rozilikni tasdiqlab bo'lmadi. Yozuv holatini tekshiring.",
+    "recordingStopFailed": "Yozuv to'xtaganini tasdiqlab bo'lmadi. Holatini tekshiring.",
     "active": "Faol qo'ng'iroq",
     "status": {
       "ringing": "Jiringlayapti",

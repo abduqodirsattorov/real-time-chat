@@ -1,7 +1,24 @@
 # Nova Chat & Call Platform — STATUS
 
-## Holat: To'liq ishlaydi (lokal) — 23/23 Xavfsizlik Audit Bandlari + Qo'shimcha Chuqur Tahlil 100% Yopildi ✅
-**Avtomatlashtirilgan testlar:** 319/319 PASS (165 integratsiya testi, 154 mikroservis unit testi). Barcha tekshiruvlar `tests/integration/security.test.ts`, `authorization.test.ts`, `nova.test.ts` va mikroservis spec testlarida qat'iy isbotlangan.
+## Current Remediation Status (2026-09-14)
+
+Remediation is in progress. The project is not verified as fully functional or production-ready.
+The active task list is [REMEDIATION_PLAN.md](REMEDIATION_PLAN.md), with the synchronized
+developer handoff in [plan.txt](../plan.txt) and implementation evidence in [P1_REMEDIATION.md](P1_REMEDIATION.md).
+
+Last recorded verification: 8 panel tests and build, 59 HTTP authorization/security tests,
+clean PostgreSQL initialization and SQL regression, and component browser checks with mocked HTTP.
+These are scoped results, not an exhaustive project test total. No tests were rerun for this documentation update.
+
+Open release gates include credential rotation, legacy session revocation and tenant-data remediation.
+Outbound client token handling, Egress failure recovery, real Centrifugo proxy wiring, real audio/recording,
+ClamAV, Flutter and the complete clean-run CI pipeline still need the acceptance work listed in the plan.
+
+## Historical Feature Inventory
+
+The sections below preserve the earlier implementation inventory and historical claims, including
+their checkmarks and test references. They have not all been revalidated and must not be treated as
+current acceptance evidence; the plan and scoped verification above take precedence.
 
 ## Ishlaydigan funksiyalar
 

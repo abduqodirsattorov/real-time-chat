@@ -67,6 +67,19 @@ function validate() {
     }
   }
 
+  for (const [name, protocols] of [
+    ['LIVEKIT_HOST', ['https:', 'http:']],
+    ['LIVEKIT_WS_URL', ['wss:']],
+  ]) {
+    try {
+      const url = new URL(process.env[name]);
+      if (!protocols.includes(url.protocol) || !url.hostname || url.username || url.password) throw new Error();
+    } catch {
+      console.error(`[CRITICAL BLOCKED] ${name} must be a valid ${protocols.join('/')} URL without embedded credentials.`);
+      errors++;
+    }
+  }
+
   if (errors > 0) {
     console.error(`\nAudit FAILED: ${errors} critical security configuration blocker(s) found.`);
     process.exit(1);

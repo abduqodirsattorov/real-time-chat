@@ -9,7 +9,8 @@ import { JwtUser } from '../common/decorators/current-user.decorator';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { ListRoomsDto } from './dto/list-rooms.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
-import { assertProductAccess } from '../common/product-access';
+import { Prisma } from '@prisma/client';
+import { assertProductAccess, allowedProductIds } from '../common/product-access';
 
 @Injectable()
 export class RoomsService {
@@ -51,7 +52,7 @@ export class RoomsService {
           select: { productId: true },
         });
         const productIds = ops.map(o => o.productId);
-        productFilter = productIds.length > 0 ? { productId: { in: productIds } } : {};
+        productFilter = { productId: { in: productIds } };
       }
     }
 
@@ -112,24 +113,28 @@ export class RoomsService {
     const isOperator = ['operator', 'supervisor', 'admin'].includes(user.role);
     if (!isOperator) throw new ForbiddenException();
 
-    if (isOperator && user.role !== 'admin' && productId) {
-      const hasAccess = await this.prisma.operatorProduct.findFirst({
-        where: { userId: user.sub, productId },
-      });
-      if (!hasAccess) throw new ForbiddenException('Ushbu mahsulotga ruxsat yo\'q');
-    }
+    if (productId) await assertProductAccess(this.prisma, user, productId);
+    const productIds = productId ? [productId] : await allowedProductIds(this.prisma, user);
+    if (productIds?.length === 0) return null;
 
-    const found = await this.prisma.user.findFirst({
-      where: { phone: { contains: phone, mode: 'insensitive' } },
-      select: { id: true, fullName: true, phone: true },
-    });
+    // Scope the user lookup itself, including customers without an active room.
+    const scope = productIds === null ? Prisma.empty : Prisma.sql`
+      AND (
+        EXISTS (SELECT 1 FROM customers c WHERE c.user_id = u.id AND c.product_id = ANY(${productIds}::uuid[]))
+        OR EXISTS (SELECT 1 FROM rooms r WHERE r.customer_id = u.id AND r.product_id = ANY(${productIds}::uuid[]))
+      )`;
+    const [found] = await this.prisma.$queryRaw<{ id: string; fullName: string | null; phone: string | null }[]>(Prisma.sql`
+      SELECT u.id, u.full_name AS "fullName", u.phone FROM users u
+      WHERE strpos(lower(u.phone), lower(${phone})) > 0 ${scope}
+      ORDER BY u.id LIMIT 1
+    `);
     if (!found) return null;
 
     const room = await this.prisma.room.findFirst({
       where: {
         customerId: found.id,
         status: { in: ['open', 'pending', 'bot_handling'] as any },
-        ...(productId ? { productId } : {}),
+        ...(productIds === null ? {} : { productId: { in: productIds } }),
       },
       orderBy: { lastMessageAt: 'desc' },
       select: { id: true, status: true },
@@ -141,6 +146,9 @@ export class RoomsService {
   // ── Create room ──────────────────────────────────────────────────────────────
 
   async create(user: JwtUser, dto: CreateRoomDto, productId?: string) {
+    if (['operator', 'supervisor', 'admin'].includes(user.role)) {
+      await assertProductAccess(this.prisma, user, productId);
+    }
     const memberIds: string[] = dto.memberIds ?? [];
     if (!memberIds.includes(user.sub)) memberIds.push(user.sub);
 
@@ -181,14 +189,7 @@ export class RoomsService {
 
     if (!isOperator && !isMember) throw new ForbiddenException('Ushbu xonaga ruxsat yo\'q');
 
-    if (isOperator && user.role !== 'admin' && room.productId) {
-      const hasAccess = await this.prisma.operatorProduct.findFirst({
-        where: { userId: user.sub, productId: room.productId },
-      });
-      if (!hasAccess && !isMember) {
-        throw new ForbiddenException('Ushbu mahsulot xonasiga ruxsat yo\'q');
-      }
-    }
+    if (isOperator && !isMember) await assertProductAccess(this.prisma, user, room.productId);
 
     return room;
   }
@@ -201,6 +202,7 @@ export class RoomsService {
 
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException('Xona topilmadi');
+    await assertProductAccess(this.prisma, user, room.productId);
 
     const updated = await this.prisma.room.update({
       where: { id: roomId },
@@ -222,6 +224,7 @@ export class RoomsService {
 
     const room = await this.prisma.room.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException('Xona topilmadi');
+    await assertProductAccess(this.prisma, user, room.productId);
     if (room.status === 'closed') throw new ConflictException('Xona allaqachon yopilgan');
 
     const closed = await this.prisma.room.update({
@@ -254,14 +257,15 @@ export class RoomsService {
 
     if (userRec?.role === 'admin') return room;
 
-    if (userRec && ['operator', 'supervisor'].includes(userRec.role)) {
-      await assertProductAccess(this.prisma, { sub: userId, role: userRec.role } as any, room.productId);
-      return room;
-    }
-
     const member = await this.prisma.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
     });
+    if (member && !member.leftAt) return room;
+
+    if (userRec && ['operator', 'supervisor'].includes(userRec.role)) {
+      await assertProductAccess(this.prisma, { sub: userId, role: userRec.role } as JwtUser, room.productId);
+      return room;
+    }
     if (!member || member.leftAt) throw new ForbiddenException('Ushbu xonaga ruxsat yo\'q');
 
     return room;

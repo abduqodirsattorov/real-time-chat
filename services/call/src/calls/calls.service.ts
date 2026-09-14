@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -34,8 +35,9 @@ export class CallsService {
   // ── QISM 3: Inbound call ─────────────────────────────────────────────────────
 
   async initiateCall(user: JwtUser, dto: InitiateCallDto) {
+    if (!dto.productId) throw new BadRequestException('Select a product before starting a call');
     const roomName = `call-${Date.now()}-${user.sub.slice(0, 8)}`;
-    const productId = dto.productId ?? null;
+    const productId = dto.productId;
 
     const call = await this.prisma.call.create({
       data: {
@@ -69,11 +71,13 @@ export class CallsService {
 
       const callerToken = await this.livekit.generateToken(user.sub, roomName);
 
-      // Notify ALL online operators so queue panel updates immediately (no 8s poll wait)
-      const onlineOps = await this.prisma.operatorState.findMany({
-        where: { status: 'available' as any },
+      const onlineOps = productId ? await this.prisma.operatorState.findMany({
+        where: {
+          status: 'available' as any,
+          user: { status: 'active', operatorProducts: { some: { productId } } },
+        },
         select: { userId: true },
-      });
+      }) : [];
       await Promise.all(
         onlineOps.map(op => this.centrifugo.publishToUser(op.userId, 'call.queued', {
           callId: call.id, callerId: user.sub, ts: new Date().toISOString(),
@@ -166,6 +170,7 @@ export class CallsService {
 
   async hangupCall(user: JwtUser, callId: string, cause?: string) {
     const call = await this.getCallOrThrow(callId);
+    this.assertParticipant(user, call);
 
     const terminal: CallStatus[] = ['completed', 'failed', 'no_answer', 'canceled'];
     if (terminal.includes(call.status)) return { callId, status: call.status };
@@ -231,6 +236,7 @@ export class CallsService {
     // Prevent operator from making outbound call if already on a call
     const opState = await this.prisma.operatorState.findUnique({ where: { userId: user.sub } });
     if (opState?.onCall) throw new BadRequestException('Siz allaqachon qo\'ng\'iroqda');
+    await assertProductAccess(this.prisma, user, opState?.currentProductId);
 
     const callee = await this.prisma.user.findUnique({ where: { id: dto.calleeId } });
     if (!callee) throw new NotFoundException('Foydalanuvchi topilmadi');
@@ -308,6 +314,10 @@ export class CallsService {
   async transferCall(user: JwtUser, callId: string, dto: TransferCallDto) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar transfer qila oladi');
     const call = await this.getCallOrThrow(callId);
+    if (user.sub !== call.calleeId) throw new ForbiddenException('Only the current operator can transfer this call');
+    await assertProductAccess(this.prisma, user, call.productId);
+    if (dto.toOperatorId === user.sub) throw new BadRequestException('Cannot transfer a call to yourself');
+    await this.assertTransferTarget(dto.toOperatorId, call.productId);
     if (!['connected', 'on_hold'].includes(call.status))
       throw new BadRequestException('Faqat ulangan qo\'ng\'iroqlarni transfer qilish mumkin');
 
@@ -386,6 +396,8 @@ export class CallsService {
 
     const isAuthorized = user.role === 'admin' || user.sub === transfer.fromOperator || user.sub === transfer.toOperator;
     if (!isAuthorized) throw new ForbiddenException('Faqat transfer ishtirokchi operatori yakunlay oladi');
+    await assertProductAccess(this.prisma, user, call.productId);
+    await this.assertTransferTarget(transfer.toOperator, call.productId);
 
     await this.livekit.removeParticipant(call.livekitRoom!, transfer.fromOperator);
     await this.livekit.destroyRoom(`consult-${callId}`);
@@ -428,6 +440,7 @@ export class CallsService {
   async startRecording(user: JwtUser, callId: string) {
     if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException('Faqat operatorlar yozishni boshlaydi');
     const call = await this.getCallOrThrow(callId);
+    this.assertParticipant(user, call);
     if (call.status !== 'connected') throw new BadRequestException('Faqat ulangan qo\'ng\'iroqlarni yozish mumkin');
 
     const existing = await this.prisma.recording.findFirst({
@@ -484,37 +497,42 @@ export class CallsService {
     const isParticipant = call.callerId === user.sub || call.calleeId === user.sub || user.role === 'admin';
     if (!isParticipant) throw new ForbiddenException('Faqat qo\'ng\'iroq ishtirokchisi bo\'lgan operator rozilik tasdiqlay oladi');
 
+    // Delegate Egress to recording-service
+    const internalKey = process.env.INTERNAL_SERVICE_KEY;
+    if (!internalKey || internalKey === 'internal_service_default_secret_key') {
+      throw new ServiceUnavailableException('Recording service authentication is not configured');
+    }
     await this.prisma.recording.update({
       where: { id: recordingId },
       data: { consentAnnounced: true },
     });
-
-    // Delegate Egress to recording-service
-    const internalKey = process.env.INTERNAL_SERVICE_KEY;
-    if (!internalKey || internalKey === 'internal_service_default_secret_key') {
-      throw new Error('INTERNAL_SERVICE_KEY xavfsiz sozlanmagan (fail-closed)');
-    }
     const recordingServiceUrl = process.env.RECORDING_SERVICE_URL || 'http://recording-service:3007';
     let egressId: string | null = null;
     let finalStatus = 'starting';
     try {
       const res = await fetch(`${recordingServiceUrl}/recordings/start`, {
         method: 'POST',
+        signal: AbortSignal.timeout(10_000),
         headers: {
           'Content-Type': 'application/json',
           'x-internal-service-key': internalKey,
         },
         body: JSON.stringify({ recordingId, callId, livekitRoom: call.livekitRoom }),
       });
-      if (res.ok) {
-        const data = await res.json() as any;
-        egressId = data.egressId ?? null;
-        finalStatus = data.status ?? (egressId ? 'active' : 'starting');
-      } else {
-        this.logger.error({ event: 'recording_service_error', status: res.status, recordingId });
+      if (!res.ok) throw new Error(`Recording service returned ${res.status}`);
+      const data = await res.json() as any;
+      if (typeof data.egressId !== 'string' || !data.egressId || data.status !== 'active') {
+        throw new Error('Recording service did not start Egress');
       }
+      egressId = data.egressId;
+      finalStatus = 'active';
     } catch (err) {
       this.logger.error({ event: 'recording_service_unreachable', recordingId, err: String(err) });
+      await this.prisma.recording.updateMany({
+        where: { id: recordingId, status: 'starting', egressId: null },
+        data: { status: 'failed', failedReason: 'egress_start_failed' },
+      });
+      throw new ServiceUnavailableException('Recording could not be started');
     }
 
     await this.rabbitmq.publish('call.recording.started', {
@@ -619,16 +637,7 @@ export class CallsService {
     });
     if (!call || !call.livekitRoom) throw new NotFoundException('Qo\'ng\'iroq topilmadi');
 
-    const isParticipant = call.callerId === user.sub || call.calleeId === user.sub;
-    const isStaff = OPERATOR_ROLES.has(user.role);
-
-    if (!isParticipant && !isStaff) {
-      this.logger.warn({ event: 'unauthorized_livekit_token_attempt', userId: user.sub, callId });
-      throw new ForbiddenException('Bu qo\'ng\'iroq uchun LiveKit token olishga ruxsat yo\'q');
-    }
-    if (isStaff && !isParticipant) {
-      await assertProductAccess(this.prisma, user, call.productId);
-    }
+    this.assertParticipant(user, call);
 
     const token = await this.livekit.generateToken(user.sub, call.livekitRoom);
     return { token, url: this.livekit.wsUrl, room: call.livekitRoom };
@@ -669,6 +678,23 @@ export class CallsService {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
+  private assertParticipant(user: JwtUser, call: { callerId: string | null; calleeId: string | null }) {
+    if (user.role !== 'admin' && call.callerId !== user.sub && call.calleeId !== user.sub) {
+      throw new ForbiddenException('Only call participants can perform this action');
+    }
+  }
+
+  private async assertTransferTarget(userId: string, productId: string | null) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, status: true },
+    });
+    if (!target || target.status !== 'active' || !OPERATOR_ROLES.has(target.role)) {
+      throw new ForbiddenException('Transfer target must be an active operator');
+    }
+    await assertProductAccess(this.prisma, { sub: userId, role: target.role } as JwtUser, productId);
+  }
+
   private async getCallOrThrow(callId: string) {
     const call = await this.prisma.call.findUnique({ where: { id: callId } });
     if (!call) throw new NotFoundException('Qo\'ng\'iroq topilmadi');
@@ -680,12 +706,18 @@ export class CallsService {
     requiredSkills: string[],
     productId: string | null,
   ) {
+    if (!productId) return null;
     const candidates = await this.prisma.operatorState.findMany({
       where: {
         status: 'available' as any,
         onCall: false,
         languages: { has: locale as any },
-        ...(productId ? { currentProductId: productId } : {}),
+        currentProductId: productId,
+        user: {
+          status: 'active',
+          role: { in: ['operator', 'supervisor', 'admin'] },
+          operatorProducts: { some: { productId } },
+        },
         ...(requiredSkills.length > 0 ? { skills: { hasSome: requiredSkills } } : {}),
       },
       orderBy: { activeChats: 'asc' },
@@ -707,14 +739,24 @@ export class CallsService {
   }
 
   private async pollQueueForCaller(operatorId: string) {
+    const op = await this.prisma.operatorState.findFirst({
+      where: { status: 'available' as any, onCall: false, userId: operatorId },
+    });
+    if (!op?.currentProductId) return;
+
+    const access = await this.prisma.operatorProduct.findFirst({
+      where: { userId: operatorId, productId: op.currentProductId },
+    });
+    if (!access) return;
+
     const queued = await this.prisma.callQueue.findFirst({
-      where: { assignedAt: null },
+      where: {
+        assignedAt: null,
+        call: { status: 'queued', productId: op.currentProductId },
+      },
       orderBy: [{ priority: 'desc' }, { enqueuedAt: 'asc' }],
     });
     if (!queued) return;
-
-    const op = await this.prisma.operatorState.findFirst({ where: { status: 'available' as any, userId: operatorId } });
-    if (!op) return;
 
     const claimed = await this.redis.setnx(`operator:claim:${operatorId}`, '1', CLAIM_TTL);
     if (!claimed) return;

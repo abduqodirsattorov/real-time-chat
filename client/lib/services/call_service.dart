@@ -54,8 +54,11 @@ class CallService {
   }
 
   Future<ActiveCall> initiateCall() async {
-    final body = <String, dynamic>{'type': 'audio'};
-    if (Config.productId != null) body['productId'] = Config.productId;
+    final productId = Config.productId;
+    if (productId == null || productId.isEmpty) {
+      throw StateError('Select a product before starting a call');
+    }
+    final body = <String, dynamic>{'productId': productId};
     final res = await ApiService().post('/calls/initiate', data: body);
     final call = res['call'] as Map<String, dynamic>;
     _activeCall = ActiveCall(

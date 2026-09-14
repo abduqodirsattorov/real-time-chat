@@ -34,9 +34,13 @@ export interface Recording {
   callId: string;
   status: string;
   consentAnnounced: boolean;
-  startedAt: string | null;
-  stoppedAt: string | null;
-  fileUrl: string | null;
+  egressId?: string | null;
+}
+
+interface StartRecordingResponse {
+  recordingId: string;
+  status: 'starting';
+  consentAnnounced: boolean;
 }
 
 export const callsApi = {
@@ -96,7 +100,15 @@ export const callsApi = {
   },
 
   startRecording(callId: string) {
-    return api.post<Recording>(`/calls/${callId}/recording/start`).then((r) => r.data);
+    return api.post<StartRecordingResponse>(`/calls/${callId}/recording/start`).then(({ data }): Recording => {
+      if (!data.recordingId) throw new Error('Missing recording ID in start response');
+      return { id: data.recordingId, callId, status: data.status, consentAnnounced: data.consentAnnounced };
+    });
+  },
+
+  getRecordings(callId: string) {
+    return api.get<{ callId: string; recordings: Recording[] }>(`/recordings/by-call/${callId}`)
+      .then(({ data }) => data.recordings);
   },
 
   consentAck(callId: string, recordingId: string) {
@@ -108,7 +120,7 @@ export const callsApi = {
       .then((r) => r.data);
   },
 
-  stopRecording(callId: string, _recordingId?: string) {
+  stopRecording(callId: string) {
     return api.post(`/calls/${callId}/recording/stop`);
   },
 

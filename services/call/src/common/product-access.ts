@@ -13,7 +13,7 @@ export async function assertProductAccess(
 ): Promise<void> {
   if (!OPERATOR_ROLES.has(user.role)) throw new ForbiddenException();
   if (user.role === 'admin') return;
-  if (!productId) return;
+  if (!productId) throw new ForbiddenException('Product scope is required');
 
   const allowed = await prisma.operatorProduct.findFirst({
     where: { userId: user.sub, productId },

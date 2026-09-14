@@ -13,7 +13,12 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as fileType from 'file-type';
 import { assertProductAccess } from '../common/product-access';
-import * as net from 'net';
+import { createReadStream, createWriteStream } from 'fs';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
+import { assertScannerConfiguration, scanWithClamAV } from './clamav';
 
 const UPLOAD_TTL = 3600;
 const VOICE_MAX_BYTES = 10 * 1024 * 1024;
@@ -42,6 +47,7 @@ export class MediaService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    assertScannerConfiguration();
     // Start consuming thumbnail requests
     await this.rabbitmq.consume('media.thumbnail', 'media.thumbnail', async (msg) => {
       await this.processThumbnail(msg.attachment_id).catch((e) =>
@@ -55,6 +61,7 @@ export class MediaService implements OnModuleInit {
   async presign(user: JwtUser, dto: PresignDto) {
     const config = ALLOWED_MIME_TYPES[dto.mimeType];
     if (!config) throw new BadRequestException(`MIME turi ruxsat etilmagan: ${dto.mimeType}`);
+    if (!Number.isSafeInteger(dto.fileSize) || dto.fileSize <= 0) throw new BadRequestException('Invalid file size');
     if (dto.fileSize > config.maxBytes) {
       throw new BadRequestException(
         `Fayl hajmi oshib ketdi. Maksimum: ${config.maxBytes / 1024 / 1024}MB`,
@@ -64,7 +71,7 @@ export class MediaService implements OnModuleInit {
     const safeFileName = this.sanitizeFileName(dto.fileName);
     const uploadId = uuidv4();
     const now = new Date();
-    const storageKey = this.buildStorageKey(now, uploadId, config.ext);
+    const storageKey = `uploads/${this.buildStorageKey(now, uploadId, config.ext)}`;
 
     const state: UploadState = {
       uploaderId: user.sub,
@@ -101,31 +108,45 @@ export class MediaService implements OnModuleInit {
       throw new BadRequestException('Fayl MinIO\'ga yuklanmagan');
     }
 
-    // Magic bytes check
-    const buf = await this.minio.getObject(state.storageKey);
-    let detected: any = null;
-    try { detected = await fileType.fromBuffer(buf); } catch {}
-    if (detected && detected.mime !== state.mimeType) {
-      this.logger.warn({
-        event: 'mime_mismatch',
-        declared: state.mimeType,
-        detected: detected.mime,
-        uploadId: dto.uploadId,
-      });
-      throw new BadRequestException('Fayl formati (MIME type) e\'lon qilingan turga mos kelmadi');
+    const config = ALLOWED_MIME_TYPES[state.mimeType];
+    if (!config || !Number.isSafeInteger(stat.size) || stat.size <= 0 ||
+        stat.size > config.maxBytes || stat.size !== state.fileSize) {
+      throw new BadRequestException('Uploaded file size does not match the upload session');
     }
 
-    // ClamAV Antivirus Scanner (INSTREAM protocol)
-    const isClean = await this.scanBufferWithClamAV(buf, state.storageKey);
-    if (!isClean) {
-      await this.minio.deleteObject(state.storageKey).catch(() => {});
-      throw new BadRequestException('Fayl tarkibida zararli dastur (virus yoki malware) aniqlandi va o\'chirildi');
+    // Scan an immutable local snapshot, then publish it under a key with no client PUT URL.
+    const directory = await mkdtemp(path.join(tmpdir(), 'media-scan-'));
+    const snapshot = path.join(directory, 'upload');
+    const storageKey = this.buildStorageKey(new Date(), uuidv4(), config.ext);
+    try {
+      let size = 0;
+      const limit = new Transform({
+        transform(chunk, _encoding, callback) {
+          size += chunk.length;
+          callback(size > stat.size ? new BadRequestException('Uploaded file exceeds its declared size') : null, chunk);
+        },
+      });
+      await pipeline(await this.minio.getObjectStream(state.storageKey), limit, createWriteStream(snapshot, { flags: 'wx', mode: 0o600 }));
+      if (size !== stat.size) throw new BadRequestException('Incomplete upload');
+      let detected: fileType.FileTypeResult | undefined;
+      try { detected = await fileType.fromFile(snapshot); } catch {}
+      this.assertMime(state.mimeType, detected?.mime);
+      await scanWithClamAV(createReadStream(snapshot));
+      await this.minio.putFile(storageKey, snapshot, state.mimeType);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        await this.redis.del(`media:upload:${dto.uploadId}`);
+        await this.minio.deleteObject(state.storageKey).catch(() => {});
+      }
+      throw error;
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
 
     const attachment = await this.prisma.attachment.create({
       data: {
         uploaderId: state.uploaderId,
-        storageKey: state.storageKey,
+        storageKey,
         mimeType: state.mimeType,
         fileName: state.fileName,
         sizeBytes: BigInt(stat.size ?? state.fileSize),
@@ -136,6 +157,7 @@ export class MediaService implements OnModuleInit {
     });
 
     await this.redis.del(`media:upload:${dto.uploadId}`);
+    await this.minio.deleteObject(state.storageKey).catch(() => {});
 
     // Publish event
     await this.rabbitmq.publish('media.uploaded', {
@@ -208,6 +230,11 @@ export class MediaService implements OnModuleInit {
     });
 
     if (message) {
+      const member = await this.prisma.roomMember.findFirst({
+        where: { roomId: message.roomId, userId: user.sub, leftAt: null },
+      });
+      if (member) return;
+
       const isStaff = ['operator', 'supervisor'].includes(user.role);
       if (isStaff) {
         const room = await this.prisma.room.findUnique({
@@ -218,15 +245,6 @@ export class MediaService implements OnModuleInit {
         return;
       }
 
-      // Foydalanuvchi aynan o'sha xonaning faol a'zosi bo'lishi shart
-      const isMember = await this.prisma.roomMember.findFirst({
-        where: {
-          roomId: message.roomId,
-          userId: user.sub,
-          leftAt: null,
-        },
-      });
-      if (isMember) return;
     }
 
     this.logger.warn({ event: 'unauthorized_attachment_access', userId: user.sub, attachmentId: att.id });
@@ -238,6 +256,7 @@ export class MediaService implements OnModuleInit {
   async uploadVoice(user: JwtUser, file: Express.Multer.File) {
     if (!file) throw new BadRequestException('Fayl yuklanmadi');
     if (file.size > VOICE_MAX_BYTES) throw new BadRequestException('Ovoz xabari 10MB dan oshmasligi kerak');
+    if (!file.buffer?.length || file.buffer.length !== file.size) throw new BadRequestException('Invalid voice file size');
 
     if (!VOICE_MIMES.has(file.mimetype)) {
       throw new BadRequestException('Faqat audio fayllar ruxsat etilgan');
@@ -246,9 +265,8 @@ export class MediaService implements OnModuleInit {
     // Magic bytes check
     let detected: any = null;
     try { detected = await fileType.fromBuffer(file.buffer); } catch {}
-    if (detected && !VOICE_MIMES.has(detected.mime)) {
-      throw new BadRequestException('Fayl turi mos kelmadi');
-    }
+    this.assertMime(file.mimetype, detected?.mime);
+    await scanWithClamAV(Readable.from([file.buffer]));
 
     const config = ALLOWED_MIME_TYPES[file.mimetype] ?? { ext: 'bin' };
     const now = new Date();
@@ -381,85 +399,14 @@ export class MediaService implements OnModuleInit {
     return mimeType.startsWith('image/') || mimeType.startsWith('video/');
   }
 
-  /**
-   * Scans a file buffer using the ClamAV daemon TCP socket via INSTREAM protocol.
-   * If CLAMAV_ENABLED is not set or false in dev mode, it logs a warning.
-   * In production mode, if enabled and scanning fails or detects malware, it fails closed.
-   */
-  private async scanBufferWithClamAV(buffer: Buffer, storageKey: string): Promise<boolean> {
-    const enabled = process.env.CLAMAV_ENABLED === 'true';
-    if (!enabled) {
-      if (process.env.NODE_ENV === 'production') {
-        this.logger.warn({
-          event: 'clamav_disabled_warning',
-          message: 'ClamAV antivirus skanerlash ishlab chiqarishda yoqilmagan. CLAMAV_ENABLED=true qiling.',
-          storageKey,
-        });
-      }
-      return true;
-    }
-
-    const host = process.env.CLAMAV_HOST || 'clamav';
-    const port = Number(process.env.CLAMAV_PORT || 3310);
-
-    return new Promise((resolve, reject) => {
-      const socket = net.createConnection({ host, port }, () => {
-        // ClamAV INSTREAM format: 'zINSTREAM\0'
-        socket.write(Buffer.from('zINSTREAM\0'));
-        const chunkSize = 2048;
-        for (let i = 0; i < buffer.length; i += chunkSize) {
-          const chunk = buffer.subarray(i, i + chunkSize);
-          const lenBuf = Buffer.alloc(4);
-          lenBuf.writeUInt32BE(chunk.length, 0);
-          socket.write(lenBuf);
-          socket.write(chunk);
-        }
-        const endBuf = Buffer.alloc(4);
-        endBuf.writeUInt32BE(0, 0);
-        socket.write(endBuf);
-      });
-
-      let response = '';
-      socket.on('data', (data) => {
-        response += data.toString('utf8');
-      });
-
-      socket.on('end', () => {
-        if (response.includes('OK')) {
-          this.logger.log({ event: 'clamav_scan_clean', storageKey, response: response.trim() });
-          resolve(true);
-        } else if (response.includes('FOUND')) {
-          this.logger.error({ event: 'clamav_virus_detected', storageKey, response: response.trim() });
-          resolve(false);
-        } else {
-          this.logger.error({ event: 'clamav_unexpected_response', storageKey, response: response.trim() });
-          if (process.env.NODE_ENV === 'production') {
-            reject(new Error(`ClamAV xatosi: ${response}`));
-          } else {
-            resolve(true);
-          }
-        }
-      });
-
-      socket.on('error', (err) => {
-        this.logger.error({ event: 'clamav_connection_failed', storageKey, error: err.message });
-        if (process.env.NODE_ENV === 'production') {
-          reject(new Error(`ClamAV xizmatiga ulanib bo'lmadi: ${err.message}`));
-        } else {
-          // Dev mode fallback
-          resolve(true);
-        }
-      });
-
-      socket.setTimeout(10000, () => {
-        socket.destroy();
-        this.logger.error({ event: 'clamav_scan_timeout', storageKey });
-        if (process.env.NODE_ENV === 'production') {
-          reject(new Error('ClamAV skanerlash vaqti tugadi'));
-        } else {
-          resolve(true);
-        }
-      });
-    });
+  private assertMime(declared: string, detected?: string) {
+    // WebM magic identifies its container, not whether it contains audio or video.
+    const aliases: Record<string, string> = {
+      'audio/webm': 'video/webm',
+      'audio/wav': 'audio/vnd.wave',
+      'audio/ogg': 'audio/opus',
+    };
+    const matches = detected === declared || detected === aliases[declared];
+    if (!detected || !matches) throw new BadRequestException('File contents do not match the declared MIME type');
   }
 }

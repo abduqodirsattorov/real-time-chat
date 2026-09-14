@@ -7,6 +7,7 @@ import axios from 'axios';
 const BASE = process.env.BASE_URL ?? 'http://localhost:80/api/v1';
 const CUSTOMER_TOKEN = process.env.CUSTOMER_TOKEN ?? '';
 const OPERATOR_TOKEN = process.env.OPERATOR_TOKEN ?? '';
+const PRODUCT_ID = process.env.TEST_PRODUCT_ID ?? '00000000-0000-0000-0000-000000000002';
 
 const customerHttp = axios.create({
   baseURL: BASE, validateStatus: () => true,
@@ -23,7 +24,7 @@ describe('Call Service', () => {
 
   describe('POST /calls/initiate (customer inbound)', () => {
     it('creates a call with status ringing or queued', async () => {
-      const res = await customerHttp.post('/calls/initiate', { type: 'audio' });
+      const res = await customerHttp.post('/calls/initiate', { productId: PRODUCT_ID });
       if (!CUSTOMER_TOKEN) { expect(res.status).toBe(401); return; }
       expect(res.status).toBe(200);
       expect(res.data.call?.id).toBeTruthy();

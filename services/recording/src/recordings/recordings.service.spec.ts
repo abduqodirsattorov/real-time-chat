@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { LiveKitEgressService } from '../livekit/livekit-egress.service';
 import { MinioService } from '../minio/minio.service';
-import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 
 const mockPrisma = {
   recording: {
@@ -15,6 +15,7 @@ const mockPrisma = {
   },
   auditLog: { create: jest.fn() },
   call: { findUnique: jest.fn() },
+  operatorProduct: { findFirst: jest.fn() },
 };
 
 const mockRabbitmq = { publish: jest.fn() };
@@ -40,6 +41,8 @@ describe('RecordingsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPrisma.operatorProduct.findFirst.mockResolvedValue(null);
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'call-1', livekitRoom: 'call-room-1' });
     const module = await Test.createTestingModule({
       providers: [
         RecordingsService,
@@ -81,15 +84,18 @@ describe('RecordingsService', () => {
       .rejects.toThrow(NotFoundException);
   });
 
-  it('T4: start() continues gracefully when Egress returns null (LiveKit unreachable)', async () => {
+  it('T4: start() reports failure when LiveKit Egress is unreachable', async () => {
     mockPrisma.recording.findUnique.mockResolvedValue({
       id: 'rec-2', callId: 'call-2', consentAnnounced: true, status: 'starting', startedAt: new Date(),
     });
     mockEgress.startRoomEgress.mockResolvedValueOnce(null);
+    mockPrisma.call.findUnique.mockResolvedValue({ id: 'call-2', livekitRoom: 'r2' });
     mockPrisma.recording.update.mockResolvedValue({ status: 'starting', egressId: null });
 
-    const result = await service.start({ recordingId: 'rec-2', callId: 'call-2', livekitRoom: 'r2' });
-    expect(result.egressId).toBeNull();
+    await expect(service.start({ recordingId: 'rec-2', callId: 'call-2', livekitRoom: 'r2' })).rejects.toThrow(ServiceUnavailableException);
+    expect(mockPrisma.recording.update).toHaveBeenCalledWith({
+      where: { id: 'rec-2' }, data: { status: 'failed', failedReason: 'egress_start_failed' },
+    });
   });
 
   // ── stop() ───────────────────────────────────────────────────────────────────
@@ -117,7 +123,7 @@ describe('RecordingsService', () => {
   const recWithCall = {
     id: 'rec-1', callId: 'call-1', startedBy: 'op-1', status: 'completed',
     storageKey: 'recordings/2026/05/call-1.mp3', startedAt: new Date(), durationMs: 60000,
-    call: { id: 'call-1', calleeId: 'op-1', callerId: 'cust-1' },
+    call: { id: 'call-1', calleeId: 'op-1', callerId: 'cust-1', productId: 'product-a' },
   };
 
   it('T7: admin can access any recording', async () => {
@@ -131,7 +137,8 @@ describe('RecordingsService', () => {
     );
   });
 
-  it('T8: supervisor can access any recording', async () => {
+  it('T8: supervisor can access recordings in their assigned product', async () => {
+    mockPrisma.operatorProduct.findFirst.mockResolvedValue({ productId: 'product-a' });
     mockPrisma.recording.findUnique.mockResolvedValue(recWithCall);
     mockPrisma.auditLog.create.mockResolvedValue({});
     const result = await service.getRecording(supUser, 'rec-1', mockRequest);
@@ -216,5 +223,29 @@ describe('RecordingsService', () => {
 
   it('T17: getByCall throws Forbidden for customer', async () => {
     await expect(service.getByCall(custUser, 'call-1')).rejects.toThrow(ForbiddenException);
+  });
+
+  it.each(['product-b', null])('denies supervisor download access for inaccessible product %s', async productId => {
+    mockPrisma.recording.findUnique.mockResolvedValue({ ...recWithCall, call: { ...recWithCall.call, productId } });
+    await expect(service.getRecording(supUser, 'rec-1', mockRequest)).rejects.toThrow(ForbiddenException);
+    expect(mockMinio.signedGetUrl).not.toHaveBeenCalled();
+  });
+
+  it('denies unrelated staff listing recordings for an unscoped call', async () => {
+    mockPrisma.call.findUnique.mockResolvedValue({ ...recWithCall.call, productId: null });
+    await expect(service.getByCall(otherOp, 'call-1')).rejects.toThrow(ForbiddenException);
+    expect(mockPrisma.recording.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects mismatched recording and call IDs before starting Egress', async () => {
+    mockPrisma.recording.findUnique.mockResolvedValue({ id: 'rec-1', callId: 'other-call', status: 'starting', consentAnnounced: true });
+    await expect(service.start({ recordingId: 'rec-1', callId: 'call-1', livekitRoom: 'call-room-1' })).rejects.toThrow(BadRequestException);
+    expect(mockEgress.startRoomEgress).not.toHaveBeenCalled();
+  });
+
+  it('rejects a LiveKit room that does not belong to the recording call', async () => {
+    mockPrisma.recording.findUnique.mockResolvedValue({ id: 'rec-1', callId: 'call-1', status: 'starting', consentAnnounced: true });
+    await expect(service.start({ recordingId: 'rec-1', callId: 'call-1', livekitRoom: 'foreign-room' })).rejects.toThrow(BadRequestException);
+    expect(mockEgress.startRoomEgress).not.toHaveBeenCalled();
   });
 });

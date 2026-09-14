@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import * as Minio from 'minio';
 
 const SIGNED_URL_TTL = 3600; // 1 hour
@@ -7,6 +7,7 @@ const SIGNED_URL_TTL = 3600; // 1 hour
 export class MinioService implements OnModuleInit {
   private readonly logger = new Logger(MinioService.name);
   private client: Minio.Client;
+  private publicClient: Minio.Client;
   private readonly bucket = process.env.MINIO_BUCKET ?? 'nova-recordings';
 
   async onModuleInit() {
@@ -20,6 +21,15 @@ export class MinioService implements OnModuleInit {
       useSSL,
       accessKey: process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
       secretKey: process.env.MINIO_SECRET_KEY ?? 'minioadmin123',
+    });
+    const publicUrl = new URL(process.env.MINIO_PUBLIC_ENDPOINT ?? 'http://localhost:9000');
+    this.publicClient = new Minio.Client({
+      endPoint: publicUrl.hostname,
+      port: Number(publicUrl.port || (publicUrl.protocol === 'https:' ? 443 : 80)),
+      useSSL: publicUrl.protocol === 'https:',
+      accessKey: process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
+      secretKey: process.env.MINIO_SECRET_KEY ?? 'minioadmin123',
+      region: 'us-east-1',
     });
 
     try {
@@ -43,10 +53,10 @@ export class MinioService implements OnModuleInit {
 
   async signedGetUrl(key: string): Promise<string> {
     try {
-      return await this.client.presignedGetObject(this.bucket, key, SIGNED_URL_TTL);
+      return await this.publicClient.presignedGetObject(this.bucket, key, SIGNED_URL_TTL);
     } catch (err) {
       this.logger.warn({ event: 'minio_sign_error', key, err: String(err) });
-      return '';
+      throw new ServiceUnavailableException('Recording storage is unavailable');
     }
   }
 

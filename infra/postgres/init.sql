@@ -454,22 +454,27 @@ CREATE TABLE bot_configs (
 
 -- ── KPI Views ──────────────────────────────────────────────────────────────────
 CREATE OR REPLACE VIEW v_operator_kpi_daily AS
-SELECT
-  c.callee_id AS operator_id,
-  DATE(c.initiated_at) AS day,
-  COUNT(*) AS total_calls,
-  AVG(c.talk_duration_ms) AS avg_talk_duration_ms,
-  AVG(c.queue_wait_ms) AS avg_queue_wait_ms,
-  COUNT(*) FILTER (WHERE c.status = 'completed') AS completed_calls,
-  COUNT(*) FILTER (WHERE c.status = 'no_answer') AS missed_calls,
-  (
-    SELECT COUNT(*) FROM call_transfers t
-    WHERE t.from_operator = c.callee_id
-      AND DATE(t.initiated_at) = DATE(c.initiated_at)
-  ) AS transfers_made
-FROM calls c
-WHERE c.callee_id IS NOT NULL
-GROUP BY c.callee_id, DATE(c.initiated_at);
+WITH daily_calls AS (
+  SELECT
+    c.callee_id AS operator_id,
+    DATE(c.initiated_at) AS day,
+    COUNT(*) AS total_calls,
+    AVG(c.talk_duration_ms) AS avg_talk_duration_ms,
+    AVG(c.queue_wait_ms) AS avg_queue_wait_ms,
+    COUNT(*) FILTER (WHERE c.status = 'completed') AS completed_calls,
+    COUNT(*) FILTER (WHERE c.status = 'no_answer') AS missed_calls
+  FROM calls c
+  WHERE c.callee_id IS NOT NULL
+  GROUP BY c.callee_id, DATE(c.initiated_at)
+), daily_transfers AS (
+  SELECT from_operator AS operator_id, DATE(initiated_at) AS day,
+    COUNT(*) AS transfers_made
+  FROM call_transfers
+  GROUP BY from_operator, DATE(initiated_at)
+)
+SELECT c.*, COALESCE(t.transfers_made, 0::bigint) AS transfers_made
+FROM daily_calls c
+LEFT JOIN daily_transfers t USING (operator_id, day);
 
 CREATE OR REPLACE VIEW v_chat_first_response AS
 SELECT

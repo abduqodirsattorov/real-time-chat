@@ -12,6 +12,29 @@ env:
   SCHEMA_SYNC_EXCLUDE: notification
 
 jobs:
+  operator-panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: operator-panel
+      - run: npm test
+        working-directory: operator-panel
+      - run: npm run build
+        working-directory: operator-panel
+
+  production-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --test scripts/production-config.test.js
+
   schema-file-sync:
     name: Schema fayllari sinxronmi
     runs-on: ubuntu-latest
@@ -58,7 +81,7 @@ jobs:
       - name: Test ${{ matrix.service }}
         run: |
           cd services/${{ matrix.service }}
-          npm ci || npm install
+          npm ci
           npx prisma generate
           npm test
 
@@ -71,7 +94,16 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Prepare environment
-        run: cp .env.example .env
+        run: |
+          cp .env.example .env
+          node <<'NODE'
+          const { randomBytes } = require('node:crypto');
+          const { appendFileSync } = require('node:fs');
+          const values = ['INTERNAL_SERVICE_KEY', 'CENTRIFUGO_WEBHOOK_SECRET']
+            .map(key => `${key}=${randomBytes(32).toString('hex')}`).join('\n');
+          appendFileSync('.env', `\n${values}\n`);
+          appendFileSync(process.env.GITHUB_ENV, `${values}\n`);
+          NODE
 
       - name: Start stack
         run: |
@@ -112,10 +144,15 @@ jobs:
           done
           exit $failed
 
+      - name: Verify SQL views and prepare test users
+        run: |
+          docker compose exec -T postgres psql -U nova -d nova_chat -v ON_ERROR_STOP=1 < tests/sql/operator-kpi.sql
+          docker compose exec -T postgres psql -U nova -d nova_chat -v ON_ERROR_STOP=1 < tests/integration/seed.sql
+
       - name: Integration + authorization suites
         run: |
           cd tests/integration
-          npm ci || npm install
+          npm ci
           npm test
 
       - name: Prometheus targets must all be up

@@ -20,6 +20,7 @@ volumes:
   prom_data:
   grafana_data:
   loki_data:
+  clamav_data:
 
 services:
 
@@ -46,12 +47,14 @@ services:
   redis:
     image: redis:7.2.5-alpine
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     volumes:
       - redis_data:/data
     networks:
       - nova-net
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -77,6 +80,9 @@ services:
 
   minio-init:
     image: minio/mc:RELEASE.2024-06-12T00-33-00Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     depends_on:
       minio:
         condition: service_healthy
@@ -84,13 +90,28 @@ services:
       - nova-net
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc alias set local http://minio:9000 \"$${MINIO_ROOT_USER}\" \"$${MINIO_ROOT_PASSWORD}\" &&
       mc mb --ignore-existing local/nova-media &&
       mc mb --ignore-existing local/nova-recordings &&
       mc anonymous set none local/nova-media &&
       mc anonymous set none local/nova-recordings &&
       echo 'MinIO private buckets configured successfully'
       "
+
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamav_data:/var/lib/clamav
+      - ./infra/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    networks:
+      - nova-net
+    # Keep the official image's ClamD ping command.
+    healthcheck:
+      start_period: 180s
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: always
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -175,6 +196,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
+      CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_HMAC_SECRET:?CENTRIFUGO_HMAC_SECRET must be set}
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
       CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET:?CENTRIFUGO_WEBHOOK_SECRET must be set}
@@ -198,6 +220,7 @@ services:
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
       CENTRIFUGO_WEBHOOK_SECRET: ${CENTRIFUGO_WEBHOOK_SECRET:?CENTRIFUGO_WEBHOOK_SECRET must be set}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY must be set}
       NOVA_API_URL: ${NOVA_API_URL:?NOVA_API_URL must be set}
       NOVA_API_KEY: ${NOVA_API_KEY:?NOVA_API_KEY must be set}
       NOVA_HMAC_SECRET: ${NOVA_HMAC_SECRET:?NOVA_HMAC_SECRET must be set}
@@ -215,6 +238,7 @@ services:
       PORT: "3003"
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
@@ -243,6 +267,12 @@ services:
       CLAMAV_ENABLED: "true"
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    depends_on:
+      clamav:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     networks:
       - nova-net
     restart: always
@@ -261,7 +291,9 @@ services:
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set}
       LIVEKIT_SECRET: ${LIVEKIT_SECRET:?LIVEKIT_SECRET must be set}
-      LIVEKIT_URL: ${LIVEKIT_URL:?LIVEKIT_URL must be set}
+      LIVEKIT_HOST: ${LIVEKIT_HOST:?LIVEKIT_HOST must be set to the LiveKit HTTP API URL}
+      LIVEKIT_WS_URL: ${LIVEKIT_WS_URL:?LIVEKIT_WS_URL must be set to the public LiveKit WebSocket URL}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY must be set}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     networks:
       - nova-net
@@ -298,8 +330,10 @@ services:
       INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?INTERNAL_SERVICE_KEY must be set}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set}
       LIVEKIT_SECRET: ${LIVEKIT_SECRET:?LIVEKIT_SECRET must be set}
+      LIVEKIT_HOST: ${LIVEKIT_HOST:?LIVEKIT_HOST must be set to the LiveKit HTTP API URL}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?MINIO_PUBLIC_ENDPOINT must be set}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     networks:
       - nova-net

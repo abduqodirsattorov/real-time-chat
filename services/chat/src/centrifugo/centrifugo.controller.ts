@@ -56,7 +56,7 @@ export class CentrifugoWebhookController {
       select: { id: true, role: true, status: true },
     });
 
-    if (!user || user.status === 'suspended') {
+    if (!user || user.status !== 'active') {
       this.logger.warn({ event: 'centrifugo_subscribe_denied_user', userId, channel });
       return { error: { code: 1003, message: 'User not found or suspended' } };
     }
@@ -102,9 +102,10 @@ export class CentrifugoWebhookController {
 
       // Agar operator/supervisor/admin bo'lsa, xonaning mahsulotiga ruxsatini tekshirish
       if (isStaff) {
-        if (!room.productId || user.role === 'admin') {
+        if (user.role === 'admin') {
           return { result: {} };
         }
+        if (!room.productId) return { error: { code: 1000, message: 'No access to room channel' } };
         const hasProductAccess = await this.prisma.operatorProduct.findFirst({
           where: { userId, productId: room.productId },
         });
@@ -145,9 +146,10 @@ export class CentrifugoWebhookController {
       }
 
       if (isStaff) {
-        if (!call.productId || user.role === 'admin') {
+        if (user.role === 'admin') {
           return { result: {} };
         }
+        if (!call.productId) return { error: { code: 1000, message: 'No access to call channel' } };
         const hasProductAccess = await this.prisma.operatorProduct.findFirst({
           where: { userId, productId: call.productId },
         });

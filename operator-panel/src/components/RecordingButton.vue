@@ -1,18 +1,23 @@
 <template>
   <div class="recording-wrapper">
-    <template v-if="!calls.activeRecording">
-      <button class="action-btn rec-btn" @click="calls.startRecording()">
+    <template v-if="calls.recordingNeedsSync || (calls.activeRecording?.status === 'starting' && calls.activeRecording.consentAnnounced)">
+      <button class="action-btn" :disabled="calls.recordingBusy" @click="calls.refreshRecording()">
+        {{ t('call.refreshRecording') }}
+      </button>
+    </template>
+    <template v-else-if="!calls.activeRecording">
+      <button class="action-btn rec-btn" :disabled="calls.recordingBusy" @click="calls.startRecording()">
         🔴 {{ t('call.recording') }}
       </button>
     </template>
     <template v-else>
       <template v-if="calls.activeRecording.status === 'starting' && !calls.activeRecording.consentAnnounced">
-        <button class="action-btn consent-btn" @click="calls.consentAck()">
+        <button class="action-btn consent-btn" :disabled="calls.recordingBusy" @click="calls.consentAck()">
           {{ t('call.consentAck') }}
         </button>
       </template>
       <template v-else-if="calls.activeRecording.status === 'active'">
-        <button class="action-btn stop-rec-btn" @click="calls.stopRecording()">
+        <button class="action-btn stop-rec-btn" :disabled="calls.recordingBusy" @click="calls.stopRecording()">
           ⏹ {{ t('call.stopRecording') }}
         </button>
         <span class="rec-indicator">REC</span>
@@ -21,6 +26,7 @@
         <span class="rec-status">{{ calls.activeRecording.status }}</span>
       </template>
     </template>
+    <span v-if="calls.recordingError" class="recording-error" role="alert">{{ t(calls.recordingError) }}</span>
   </div>
 </template>
 
@@ -35,6 +41,7 @@ const calls = useCallsStore();
 <style scoped>
 .recording-wrapper {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -52,6 +59,17 @@ const calls = useCallsStore();
 
 .action-btn:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.recording-error {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #fca5a5;
 }
 
 .consent-btn {
